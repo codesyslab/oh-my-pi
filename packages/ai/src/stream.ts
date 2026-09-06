@@ -35,6 +35,7 @@ import type { GoogleVertexOptions } from "./providers/google-vertex";
 import { isKimiModel, streamKimi } from "./providers/kimi";
 import type { OllamaChatOptions } from "./providers/ollama";
 import type { OpenAICompletionsOptions } from "./providers/openai-completions";
+import type { QoderCnOptions } from "./providers/qoder-cn";
 import { streamPiNative } from "./providers/pi-native-client";
 // Heavy provider stream functions are imported lazily via register-builtins,
 // which wraps each provider module in a dynamic import. This keeps the
@@ -57,6 +58,7 @@ import {
 	streamOpenAICodexResponses,
 	streamOpenAICompletions,
 	streamOpenAIResponses,
+	streamQoderCn,
 } from "./providers/register-builtins";
 import { isSyntheticModel, streamSynthetic } from "./providers/synthetic";
 import { getProviderDefinition, PROVIDER_REGISTRY } from "./registry";
@@ -1025,6 +1027,13 @@ function streamDispatch<TApi extends Api>(
 
 		case "devin-agent":
 			return streamDevin(providerModel as Model<"devin-agent">, context, providerOptions as DevinOptions);
+
+		case "qoder-cn":
+			return streamQoderCn(
+				providerModel as Model<"qoder-cn">,
+				context,
+				providerOptions as QoderCnOptions,
+			);
 
 		default:
 			throw new AIError.ConfigurationError(`Unhandled API: ${api}`);
@@ -2424,6 +2433,13 @@ function mapOptionsForApi<TApi extends Api>(
 			return castApi<"devin-agent">({
 				...base,
 				chatModelUid: resolveWireModelId(devinModel, effort),
+			});
+		}
+		case "qoder-cn": {
+			return castApi<"qoder-cn">({
+				...base,
+				reasoning: options?.reasoning,
+				disableReasoning: options?.disableReasoning,
 			});
 		}
 		default:

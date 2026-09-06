@@ -118,6 +118,9 @@ behavior {
 	exclude-models provider="firepass" prefix="accounts/fireworks/"
 	// Text-chat transports cannot serve Xiaomi's audio-only models.
 	exclude-models provider="xiaomi" substring="-tts" substring="-asr"
+	// Qoder tier routers (auto/ultimate/...) are server-side routing lanes,
+	// not chat models: routing must pick concrete vendor models.
+	exclude-models provider="qoder-cn" exact="auto" exact="ultimate" exact="performance" exact="efficient" exact="lite"
 	exclude-models provider="xiaomi-token-plan-ams" substring="-tts" substring="-asr"
 	exclude-models provider="xiaomi-token-plan-cn" substring="-tts" substring="-asr"
 	exclude-models provider="xiaomi-token-plan-sgp" substring="-tts" substring="-asr"

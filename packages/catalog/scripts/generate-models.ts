@@ -99,7 +99,7 @@ const DISCOVERY_ONLY_PROVIDERS = new Set(["ollama", "vllm", "lm-studio", "litell
  * runtime discovery is authoritative per credential (mirrors the GitLab Duo
  * fallback-only policy below).
  */
-const CREDENTIAL_SCOPED_PROVIDERS = new Set(["devin"]);
+const CREDENTIAL_SCOPED_PROVIDERS = new Set(["devin", "qoder-cn"]);
 
 /**
  * Restores unfetched rows from a previous generated catalog while pruning
@@ -682,6 +682,14 @@ async function generateModels() {
 	// default must resolve synchronously at boot, before credential-scoped
 	// runtime discovery replaces the seed with the account's live catalog.
 	allModels.push(...DEVIN_STATIC_MODELS);
+	// Qoder CN is PAT-only and credential-scoped. Unlike Devin, the
+	// vendor-verified seed is consumed at runtime through
+	// `qoderCnModelManagerOptions`'s `staticModels` (read from
+	// `QODER_CN_SEED_SPECS`), not written to the bundle — keeping the model
+	// table aligned with `CREDENTIAL_SCOPED_PROVIDERS` and avoiding a stale
+	// models.json row from outliving the live PAT roster. The descriptor's
+	// `deepseek-v4-pro` default still resolves synchronously at boot from
+	// the same seed array.
 	// Muse Code discovery is scoped to the signed-in subscription. Bundle the
 	// documented seed, then replace it with the account's live roster at runtime.
 	allModels.push(...MUSE_CODE_STATIC_MODELS);

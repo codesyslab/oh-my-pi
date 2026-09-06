@@ -19,6 +19,10 @@ const RUNTIME_ONLY_PROVIDERS = new Set([
 	"lm-studio",
 	"vllm",
 	"openai-codex-device",
+	// Qoder CN is PAT-only and credential-scoped; the bundled surface is the
+	// `QODER_CN_SEED_SPECS` array read by `qoderCnModelManagerOptions`'s
+	// `staticModels`, not a models.json row, so the bundle stays empty.
+	"qoder-cn",
 ]);
 
 function collectReferencedProviders(): Map<string, string> {

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the `qoder-cn` streaming provider: PAT → job-token auth with single-flight caching and one-shot 401 re-auth, COSY request signing and the gateway body codec, SSE envelope parsing (text, `reasoning_content`, fragmented/parallel tool calls, usage after `finish_reason`), and vendor-verified reasoning control per model (effort ladders, toggle, always-think).
+
 ## [18.1.12] - 2026-09-06
 
 ### Added

@@ -7,6 +7,13 @@ describe("isProviderRetryableError", () => {
 		expect(isProviderRetryableError(new Error("error 1302 from upstream"))).toBe(true);
 	});
 
+	it("retries transient TLS handshake verification flakes", () => {
+		// Bun/BoringSSL intermittently fails handshakes to some gateways with
+		// "unknown certificate verification error"; an immediate retry succeeds,
+		// so the turn must not die on it.
+		expect(isProviderRetryableError(new TypeError("unknown certificate verification error"))).toBe(true);
+	});
+
 	it("retries transient stream parse errors and pre-content envelope failures", () => {
 		expect(isProviderRetryableError(new Error("JSON Parse error: Unterminated string"))).toBe(true);
 		expect(isProviderRetryableError(new Error("Unexpected end of JSON input"))).toBe(true);

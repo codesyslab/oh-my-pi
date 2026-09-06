@@ -1,0 +1,15 @@
+// Qoder CN auth: PAT-only (the cpa-plugin capability matrix shows CN device
+// tokens (dt-) cannot authenticate inference, and pi-provider-qoder marks
+// CN `supportsBrowserLogin: false`). PATs are web-session-only: there is no
+// OpenAPI endpoint to mint one — users must visit the dashboard and create a
+// Personal Access Token. The auth contract mirrors deepseek's `api-key`
+// grammar; the only differences are the name and the auth-url/instructions.
+
+auth "qoder-cn" {
+	name "Qoder CN"
+	login "api-key" {
+		auth-url "https://qoder.com.cn/account/integrations"
+		instructions "Create or copy your Personal Access Token from the Qoder CN dashboard (Account → Integrations)."
+		prompt "Paste your Qoder CN Personal Access Token" placeholder="pt-..."
+	}
+}

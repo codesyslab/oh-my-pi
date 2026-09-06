@@ -43,6 +43,7 @@ import type { OllamaChatOptions } from "./ollama";
 import type { OpenAICodexResponsesOptions } from "./openai-codex-responses";
 import type { OpenAICompletionsOptions } from "./openai-completions";
 import type { OpenAIResponsesOptions } from "./openai-responses";
+import type { QoderCnOptions } from "./qoder-cn";
 
 // ---------------------------------------------------------------------------
 // Lazy provider module shape
@@ -136,6 +137,10 @@ interface DevinProviderModule {
 	streamDevin: (model: Model<"devin-agent">, context: Context, options: DevinOptions) => AssistantMessageEventStream;
 }
 
+interface QoderCnProviderModule {
+	streamQoderCn: (model: Model<"qoder-cn">, context: Context, options: QoderCnOptions) => AssistantMessageEventStream;
+}
+
 interface BedrockProviderModule {
 	streamBedrock: (
 		model: Model<"bedrock-converse-stream">,
@@ -160,6 +165,7 @@ let ollamaProviderModulePromise: Promise<LazyProviderModule<"ollama-chat">> | un
 let cursorProviderModulePromise: Promise<LazyProviderModule<"cursor-agent">> | undefined;
 let cursorProviderModuleOverride: LazyProviderModule<"cursor-agent"> | undefined;
 let devinProviderModulePromise: Promise<LazyProviderModule<"devin-agent">> | undefined;
+let qoderCnProviderModulePromise: Promise<LazyProviderModule<"qoder-cn">> | undefined;
 let bedrockProviderModuleOverride: LazyProviderModule<"bedrock-converse-stream"> | undefined;
 let bedrockProviderModulePromise: Promise<LazyProviderModule<"bedrock-converse-stream">> | undefined;
 
@@ -458,6 +464,14 @@ function loadDevinProviderModule(): Promise<LazyProviderModule<"devin-agent">> {
 	return devinProviderModulePromise;
 }
 
+function loadQoderCnProviderModule(): Promise<LazyProviderModule<"qoder-cn">> {
+	qoderCnProviderModulePromise ||= import("./qoder-cn").then(module => {
+		const provider = module as QoderCnProviderModule;
+		return { stream: provider.streamQoderCn };
+	});
+	return qoderCnProviderModulePromise;
+}
+
 function loadBedrockProviderModule(): Promise<LazyProviderModule<"bedrock-converse-stream">> {
 	if (bedrockProviderModuleOverride) {
 		return Promise.resolve(bedrockProviderModuleOverride);
@@ -502,6 +516,7 @@ export const streamOpenAIResponses = createLazyStream(
 );
 export const streamCursor = createLazyStream(loadCursorProviderModule);
 export const streamDevin = createLazyStream(loadDevinProviderModule);
+export const streamQoderCn = createLazyStream(loadQoderCnProviderModule);
 export const streamOllama = createLazyStream(loadOllamaProviderModule, OPENAI_IDLE_FLOORED_LAZY_STREAM_LIMITS);
 
 export const streamBedrock = createLazyStream(loadBedrockProviderModule);

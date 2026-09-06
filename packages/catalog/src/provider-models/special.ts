@@ -6,6 +6,8 @@ import type { DevinModelDiscoveryOptions } from "../discovery/devin";
 import { buildGitLabDuoWorkflowFallbackModel, fetchGitLabDuoWorkflowModels } from "../discovery/gitlab-duo-workflow";
 import type { ModelManagerOptions } from "../model-manager";
 import { getBundledModel } from "../models";
+import { QODER_CN_GATEWAY_BASE_URL } from "../qoder/endpoints";
+import { Effort } from "../effort";
 import type { Api, FetchImpl, Model, ModelSpec } from "../types";
 import { DEVIN_DEFAULT_BASE_URL } from "../wire/devin";
 import { toModelSpec } from "./bundled-references";
@@ -398,6 +400,246 @@ export function devinModelManagerOptions(config: DevinModelManagerConfig = {}): 
 }
 
 const devinDiscovery = once(() => import("../discovery/devin"));
+// ---------------------------------------------------------------------------
+// Qoder CN
+// ---------------------------------------------------------------------------
+
+/**
+ * Vendor-verified Qoder CN roster (live 2026-09-06). Tier routers
+ * (`auto`, `ultimate`, `performance`, ...) are deliberately excluded —
+ * routing must pick concrete vendor models. Verified facts are also expressed
+ * as KDL corrections in `compat/rules/providers/qoder-cn.kdl` so live
+ * discovery and the static seed agree.
+ */
+export interface QoderCnStaticModel {
+	/** Canonical operator-facing id (vendor's own model id). */
+	id: string;
+	/** Qoder wire key (X-Model-Key / model_config.key) — transport-only. */
+	wireKey: string;
+	displayName: string;
+	contextWindow: number;
+	maxOutputTokens?: number;
+	vision: boolean;
+	reasoning: QoderCnReasoningControl;
+}
+
+export type QoderCnReasoningControl =
+	/** Hybrid on/off switch, no effort ladder. */
+	| { kind: "toggle"; disableAllowed: boolean }
+	/** Effort ladder; `disableAllowed` = a real non-thinking mode exists. */
+	| { kind: "efforts"; efforts: readonly Effort[]; disableAllowed: boolean }
+	/** Always thinks; no control exists — send NO reasoning parameters. */
+	| { kind: "always" };
+
+const QODER_CN_CTX_1M = 1_000_000;
+const QODER_CN_CTX_256K = 256_000;
+const QODER_CN_CTX_204_800 = 204_800;
+const QODER_CN_MAX_OUT_128K = 131_072;
+const QODER_CN_MAX_OUT_65K = 65_536;
+
+export const QODER_CN_STATIC_MODELS: readonly QoderCnStaticModel[] = [
+	{
+		id: "qwen3.8-max",
+		wireKey: "qmodel_38max",
+		displayName: "Qwen3.8-Max",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: true,
+		reasoning: { kind: "efforts", efforts: [Effort.Low, Effort.Medium, Effort.XHigh], disableAllowed: true },
+	},
+	{
+		id: "qwen3.8-flash",
+		wireKey: "qfmodel",
+		displayName: "Qwen3.8-Flash",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: true,
+		reasoning: { kind: "efforts", efforts: [Effort.Low, Effort.Medium, Effort.XHigh], disableAllowed: true },
+	},
+	{
+		id: "qwen3.7-max",
+		wireKey: "qmodel_latest",
+		displayName: "Qwen3.7-Max",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_65K,
+		vision: true,
+		reasoning: { kind: "toggle", disableAllowed: true },
+	},
+	{
+		id: "qwen3.7-plus",
+		wireKey: "qmodel",
+		displayName: "Qwen3.7-Plus",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: true,
+		reasoning: { kind: "toggle", disableAllowed: true },
+	},
+	{
+		id: "qwen3.7-flash",
+		wireKey: "q37fmodel",
+		displayName: "Qwen3.7-Flash",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: true,
+		reasoning: { kind: "toggle", disableAllowed: true },
+	},
+	{
+		id: "deepseek-v4-pro",
+		wireKey: "dmodel",
+		displayName: "DeepSeek-V4-Pro",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: false,
+		reasoning: { kind: "efforts", efforts: [Effort.High, Effort.Max], disableAllowed: true },
+	},
+	{
+		id: "deepseek-v4-flash",
+		wireKey: "dfmodel",
+		displayName: "DeepSeek-V4-Flash",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: false,
+		reasoning: { kind: "efforts", efforts: [Effort.High, Effort.Max], disableAllowed: true },
+	},
+	{
+		id: "glm-5.3",
+		wireKey: "gmodel",
+		displayName: "GLM-5.3",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: false,
+		reasoning: { kind: "efforts", efforts: [Effort.Low, Effort.High, Effort.Max], disableAllowed: false },
+	},
+	{
+		id: "glm-5.3-flash",
+		wireKey: "gfmodel",
+		displayName: "GLM-5.3-Flash",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: true,
+		reasoning: { kind: "efforts", efforts: [Effort.High, Effort.Max], disableAllowed: false },
+	},
+	{
+		id: "glm-5.2",
+		wireKey: "gm51model",
+		displayName: "GLM-5.2",
+		contextWindow: QODER_CN_CTX_1M,
+		maxOutputTokens: QODER_CN_MAX_OUT_128K,
+		vision: false,
+		reasoning: { kind: "efforts", efforts: [Effort.High, Effort.Max], disableAllowed: false },
+	},
+	{
+		id: "kimi-k2.7-code",
+		wireKey: "kmodel",
+		displayName: "Kimi-K2.7-Code",
+		contextWindow: QODER_CN_CTX_256K,
+		vision: true,
+		reasoning: { kind: "always" },
+	},
+	{
+		id: "minimax-m2.7",
+		wireKey: "mmodel",
+		displayName: "MiniMax-M2.7",
+		contextWindow: QODER_CN_CTX_204_800,
+		vision: false,
+		reasoning: { kind: "always" },
+	},
+];
+
+/**
+ * Build one qoder-cn spec from its vendor-verified static row. Shared by the
+ * seed (`QODER_CN_SEED_SPECS`) and live discovery so seeded and discovered
+ * rows are indistinguishable downstream (the devin pattern).
+ */
+export function qoderCnSeedSpec(
+	model: QoderCnStaticModel,
+	baseUrl: string = QODER_CN_GATEWAY_BASE_URL,
+): ModelSpec<"qoder-cn"> {
+	const reasoning = model.reasoning;
+	const spec: ModelSpec<"qoder-cn"> = {
+		id: model.id,
+		requestModelId: model.wireKey,
+		name: model.displayName,
+		api: "qoder-cn",
+		provider: "qoder-cn",
+		baseUrl,
+		reasoning: true,
+		input: model.vision ? ["text", "image"] : ["text"],
+		supportsTools: true,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+		contextWindow: model.contextWindow,
+		maxTokens: model.maxOutputTokens ?? null,
+		headers: {
+			"X-Model-Key": model.wireKey,
+			"X-Model-Source": "system",
+		},
+		compat: { thinkingControl: reasoning.kind },
+	};
+	// Only effort-ladder models carry an explicit thinking surface. Toggle and
+	// always-thinks models resolve to `thinking: undefined` (see
+	// resolveThinkingPolicy's qoder-cn branch): the toggle takes a bare
+	// `enable_thinking`, always-thinks models take no reasoning parameters at
+	// all — a fabricated ladder would put `reasoning_effort` on the wire for
+	// models that cannot honor it.
+	if (reasoning.kind === "efforts") {
+		spec.thinking = {
+			mode: "effort",
+			efforts: [...reasoning.efforts],
+			...(reasoning.disableAllowed ? {} : { requiresEffort: true }),
+		};
+	}
+	return spec;
+}
+
+export const QODER_CN_SEED_SPECS: readonly ModelSpec<"qoder-cn">[] = QODER_CN_STATIC_MODELS.map(model =>
+	qoderCnSeedSpec(model),
+);
+
+export interface QoderCnModelManagerConfig {
+	apiKey?: string;
+	/** Optional gateway base URL override (CN default: `https://gateway.qoder.com.cn`). */
+	baseUrl?: string;
+	/** Optional OpenAPI base URL override (CN default: `https://openapi.qoder.com.cn`). */
+	openApiBaseUrl?: string;
+	fetch?: FetchImpl;
+}
+
+/**
+ * Qoder CN model-manager options. Qoder CN is PAT-only: discovery is
+ * credential-scoped, so catalog generation never fetches it (see
+ * `CREDENTIAL_SCOPED_PROVIDERS` in `scripts/generate-models.ts`) and the seed
+ * is the only bundled surface. When `apiKey` is supplied, dynamic discovery
+ * becomes authoritative per PAT.
+ */
+export function qoderCnModelManagerOptions(config: QoderCnModelManagerConfig = {}): ModelManagerOptions<"qoder-cn"> {
+	const { apiKey, baseUrl, openApiBaseUrl, fetch: fetchFn } = config;
+	const overrideEndpoints: { gatewayBaseUrl?: string; openApiBaseUrl?: string } | undefined =
+		baseUrl !== undefined || openApiBaseUrl !== undefined ? { gatewayBaseUrl: baseUrl, openApiBaseUrl } : undefined;
+	return {
+		providerId: "qoder-cn",
+		staticModels: QODER_CN_SEED_SPECS,
+		...(apiKey ? { dynamicModelsAuthoritative: true } : undefined),
+		...(apiKey
+			? {
+					fetchDynamicModels: async () => {
+						const { fetchQoderCnModels } = await qoderCnDiscovery();
+						return fetchQoderCnModels({ apiKey, endpoints: overrideEndpoints, fetch: fetchFn });
+					},
+				}
+			: undefined),
+	};
+}
+
+const qoderCnDiscovery = once(() => import("../discovery/qoder"));
+
+/** Test seam: forget exchanged job tokens and the cached machine id. */
+export async function resetQoderCnStateForTests(): Promise<void> {
+	const { resetQoderCredentialCachesForTests } = await import("../qoder/auth");
+	const { resetQoderMachineIdForTests } = await import("../qoder/machine-id");
+	resetQoderCredentialCachesForTests();
+	resetQoderMachineIdForTests();
+}
+
 // ---------------------------------------------------------------------------
 // Zai
 // ---------------------------------------------------------------------------

@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added Qoder CN as a provider: PAT-only credential flow (PAT → job-token exchange → COSY-signed `/model/list`), the shared COSY signing/encoding core, live model discovery, and the vendor-verified CN roster (Qwen 3.8/3.7, DeepSeek V4 Pro/Flash, GLM 5.3/5.3-Flash/5.2, Kimi-K2.7-Code, MiniMax-M2.7).
+
 ## [18.1.12] - 2026-09-06
 
 ### Added

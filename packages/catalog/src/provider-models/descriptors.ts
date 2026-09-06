@@ -68,6 +68,7 @@ import {
 	cursorModelManagerOptions,
 	devinModelManagerOptions,
 	gitLabDuoWorkflowModelManagerOptions,
+	qoderCnModelManagerOptions,
 	zaiModelManagerOptions,
 } from "./special";
 
@@ -586,6 +587,14 @@ export const CATALOG_PROVIDERS = [
 		createModelManagerOptions: (config: ModelManagerConfig) => zhipuCodingPlanModelManagerOptions(config),
 		dynamicModelsAuthoritative: true,
 		catalogDiscovery: { label: "Zhipu Coding Plan" },
+	},
+	{
+		id: "qoder-cn",
+		defaultModel: "deepseek-v4-pro",
+		envVars: ["QODER_PERSONAL_ACCESS_TOKEN"],
+		createModelManagerOptions: (config: ModelManagerConfig) => qoderCnModelManagerOptions(config),
+		dynamicModelsAuthoritative: true,
+		catalogDiscovery: { label: "Qoder CN" },
 	},
 ] as const satisfies readonly ProviderCatalogEntry[];
 

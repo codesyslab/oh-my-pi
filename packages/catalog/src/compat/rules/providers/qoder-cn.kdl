@@ -1,0 +1,99 @@
+// Provider-wire compat for "qoder-cn"; vendor-verified capability corrections
+// over Qoder's unreliable self-report.
+//
+// Qoder CN exposes a /model/list endpoint that returns a live roster of
+// gateway-advertised entries, but the gateway reports are not trustworthy:
+//   - DeepSeek-V4-Pro/Flash and GLM-5.3/5.2 are advertised with is_vl=true
+//     despite being TEXT-ONLY;
+//   - the advertised max_input_tokens is a stale 180K floor even on 1M models;
+//   - some models advertise a 1M context option that the underlying vendor
+//     model cannot actually service (e.g. minimax-m2.7 = 204_800; kimi-k2.7-code
+//     = 256_000);
+//   - kimi-k2.7-code and minimax-m2.7 reason unconditionally (no control).
+//
+// The cascade below mirrors the vendor-verified overlay the static seed
+// already carries inline (compat/rules axis ownership; see
+// `provider-models/special.ts` QODER_CN_STATIC_MODELS). Live discovery routes
+// through the same rules so seeded and discovered rows agree. Classification
+// (deepseek/qwen/glm/kimi/minimax) follows the existing taxonomy classes;
+// exact-id residue rules carry the per-model corrections the cascade cannot
+// derive from class membership alone.
+
+provider "qoder-cn" {
+	// ── DeepSeek ────────────────────────────────────────────────────────────
+	// DeepSeek V4 Pro/Flash are TEXT-ONLY on the CN Qoder gateway, despite
+	// the gateway reporting is_vl:true. The vendor-verified reasoning ladder
+	// is low/high/max; the CN gateway advertises only high/max for Pro and
+	// low/high/max for Flash.
+	models "deepseek-v4-pro" {
+		input-modalities "text"
+		thinking-control "efforts"
+		thinking-efforts "high" "max"
+	}
+	models "deepseek-v4-flash" {
+		input-modalities "text"
+		thinking-control "efforts"
+		thinking-efforts "high" "max"
+	}
+	// ── GLM ─────────────────────────────────────────────────────────────────
+	// GLM-5.3, GLM-5.3-Flash, GLM-5.2 on CN are TEXT-ONLY (5.3-Flash is the
+	// vision family member on some hosts but Qoder-CN's catalog reports
+	// is_vl:true on all three). Thinking cannot be disabled on any of them;
+	// Qoder-CN gates the three families on different ladders.
+	models "glm-5.3" {
+		input-modalities "text"
+		thinking-control "efforts"
+		thinking-efforts "low" "high" "max"
+		thinking-requires-effort #true
+	}
+	models "glm-5.3-flash" {
+		input-modalities "text" "image"
+		thinking-control "efforts"
+		thinking-efforts "high" "max"
+		thinking-requires-effort #true
+	}
+	models "glm-5.2" {
+		input-modalities "text"
+		thinking-control "efforts"
+		thinking-efforts "high" "max"
+		thinking-requires-effort #true
+	}
+	// ── Qwen ────────────────────────────────────────────────────────────────
+	// Qwen 3.8 Max/Flash accept a low/medium/xhigh ladder with thinking-off
+	// allowed. Qwen 3.7 Max/Plus/Flash expose the binary toggle only — the
+	// wire has no effort ladder for them, so they must never see a
+	// reasoning_effort parameter.
+	models "qwen3.8-max" {
+		thinking-control "efforts"
+		thinking-efforts "low" "medium" "xhigh"
+	}
+	models "qwen3.8-flash" {
+		thinking-control "efforts"
+		thinking-efforts "low" "medium" "xhigh"
+	}
+	models "qwen3.7-max" "qwen3.7-plus" "qwen3.7-flash" {
+		thinking-control "toggle"
+	}
+	// ── Kimi ────────────────────────────────────────────────────────────────
+	// Kimi-K2.7-Code: always thinks (no control — send NO reasoning
+	// parameters). Pin the 256K verified window — the gateway advertises it,
+	// but pin anyway so a future 1M option can't widen the catalog row.
+	models "kimi-k2.7-code" {
+		limits-patch {
+			context-window 256000
+		}
+		thinking-control "always"
+	}
+	// ── MiniMax ────────────────────────────────────────────────────────────
+	// MiniMax-M2.7: vendor-verified window is 204,800; the CN gateway
+	// advertises a 1M context option that the underlying model cannot serve.
+	// Always thinks (streams reasoning_content) with no control — send NO
+	// reasoning parameters.
+	models "minimax-m2.7" {
+		input-modalities "text"
+		limits-patch {
+			context-window 204800
+		}
+		thinking-control "always"
+	}
+}

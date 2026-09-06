@@ -20,7 +20,8 @@ export type KnownApi =
 	| "ollama-chat"
 	| "cursor-agent"
 	| "gitlab-duo-agent"
-	| "devin-agent";
+	| "devin-agent"
+	| "qoder-cn";
 export type Api = KnownApi | (string & {});
 
 /** Canonical thinking transport used by a model. */
@@ -907,6 +908,34 @@ export interface DevinCompat {
 
 /** Fully-resolved devin-agent compat view. */
 export type ResolvedDevinCompat = Required<DevinCompat>;
+
+/**
+ * Reasoning control the Qoder CN gateway exposes for a model. Qoder's
+ * self-reported thinking metadata is unreliable (is_reasoning:false on
+ * always-thinking models, effort ladders a model cannot honor), so the
+ * control kind is vendor-verified and rule-owned
+ * (`compat/rules/providers/qoder-cn.kdl`), never derived from the gateway
+ * advertisement for known models.
+ *
+ * - `efforts` — wire accepts `enable_thinking` + `reasoning_effort` on the
+ *   `thinking.efforts` ladder; off is a real wire value unless
+ *   `thinking.requiresEffort`.
+ * - `toggle` — binary `enable_thinking` only; the wire has no effort ladder.
+ * - `always` — the model reasons unconditionally; send NO reasoning
+ *   parameters, but expect `reasoning_content` in the stream.
+ * - `none` — no reasoning capability; send nothing, expect nothing.
+ */
+export type QoderCnThinkingControl = "efforts" | "toggle" | "always" | "none";
+
+/** Compatibility settings for the qoder-cn (Qoder CN subscription gateway) API. */
+export interface QoderCnCompat {
+	/** Vendor-verified reasoning control kind (see {@link QoderCnThinkingControl}). */
+	thinkingControl?: QoderCnThinkingControl;
+}
+
+/** Fully-resolved qoder-cn compat view. */
+export type ResolvedQoderCnCompat = Required<QoderCnCompat>;
+
 /**
  * Compatibility settings for the Google API family (google-generative-ai,
  * google-vertex, google-gemini-cli). Class-driven defaults come from the
@@ -970,9 +999,11 @@ export type CompatConfigOf<TApi extends Api> = TApi extends
 			? BedrockCompat
 			: TApi extends "devin-agent"
 				? DevinCompat
-				: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
-					? GoogleCompat
-					: undefined;
+				: TApi extends "qoder-cn"
+					? QoderCnCompat
+					: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+						? GoogleCompat
+						: undefined;
 
 /** Resolved compat for a given API: complete record, materialized once by `buildModel`. */
 export type CompatOf<TApi extends Api> = TApi extends "openrouter"
@@ -987,9 +1018,11 @@ export type CompatOf<TApi extends Api> = TApi extends "openrouter"
 					? ResolvedBedrockCompat
 					: TApi extends "devin-agent"
 						? ResolvedDevinCompat
-						: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
-							? ResolvedGoogleCompat
-							: undefined;
+						: TApi extends "qoder-cn"
+							? ResolvedQoderCnCompat
+							: TApi extends "google-generative-ai" | "google-vertex" | "google-gemini-cli"
+								? ResolvedGoogleCompat
+								: undefined;
 
 /** Provider-native compaction endpoint configuration for one model. */
 export interface RemoteCompactionConfig<TApi extends Api = Api> {

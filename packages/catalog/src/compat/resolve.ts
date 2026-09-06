@@ -29,6 +29,7 @@ import type {
 	ResolvedOpenAICompat,
 	ResolvedOpenAIResponsesCompat,
 	ResolvedOpenAISharedCompat,
+	ResolvedQoderCnCompat,
 	ThinkingConfig,
 } from "../types";
 import { isAnthropicSigningProxyUrl, isAzureAnthropicRoute, isOfficialAnthropicApiUrl } from "./anthropic";
@@ -899,6 +900,21 @@ function resolveDevinPolicy(spec: ModelSpec<"devin-agent">, axes: ResolvedAxes):
 	return compat;
 }
 
+function resolveQoderCnPolicy(spec: ModelSpec<"qoder-cn">, axes: ResolvedAxes): ResolvedQoderCnCompat {
+	const compat: ResolvedQoderCnCompat = {
+		// Derivation only seeds the default; the provider rule owns the
+		// vendor-verified control kind for every known model.
+		thinkingControl: !spec.reasoning
+			? "none"
+			: spec.thinking !== undefined && spec.thinking.efforts.length > 0
+				? "efforts"
+				: "always",
+	};
+	applyWireAxes(compat, axes.wire, "qoder-cn");
+	applyCompatOverrides(compat, spec.compat);
+	return compat;
+}
+
 function resolveGooglePolicy(
 	spec: ModelSpec<"google-generative-ai" | "google-vertex" | "google-gemini-cli">,
 	axes: ResolvedAxes,
@@ -1075,6 +1091,18 @@ function resolveThinkingPolicy<TApi extends Api>(
 		return undefined;
 	}
 	if (omitsWireReasoningEffort(spec.api, compat)) return undefined;
+	// Qoder CN: only `efforts`-control models carry a thinking surface. Toggle
+	// models take a bare `enable_thinking` (no ladder exists on the wire), and
+	// always/none models must never see a fabricated ladder — the provider
+	// would otherwise send `reasoning_effort` to models that cannot honor it.
+	if (
+		spec.api === "qoder-cn" &&
+		compat !== undefined &&
+		"thinkingControl" in compat &&
+		compat.thinkingControl !== "efforts"
+	) {
+		return undefined;
+	}
 	const rule = readRuleThinking(axes);
 	if (spec.thinking && Array.isArray(spec.thinking.efforts) && spec.thinking.efforts.length > 0) {
 		return fillExplicitThinking(spec, facts, compat, spec.thinking, rule);
@@ -1214,6 +1242,8 @@ export function resolveModelPolicy(spec: ModelSpec<Api>): ResolvedModelPolicy<Ap
 		compat = resolveBedrockPolicy(spec, axes);
 	} else if (specUsesApi(spec, "devin-agent")) {
 		compat = resolveDevinPolicy(spec, axes);
+	} else if (specUsesApi(spec, "qoder-cn")) {
+		compat = resolveQoderCnPolicy(spec, axes);
 	} else if (
 		specUsesApi(spec, "google-generative-ai") ||
 		specUsesApi(spec, "google-vertex") ||

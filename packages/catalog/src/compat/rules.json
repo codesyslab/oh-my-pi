@@ -60,6 +60,7 @@
 		"auth/parallel.kdl",
 		"auth/perplexity.kdl",
 		"auth/qianfan.kdl",
+		"auth/qoder-cn.kdl",
 		"auth/qwen-portal.kdl",
 		"auth/sakana.kdl",
 		"auth/siliconflow-cn.kdl",
@@ -151,6 +152,7 @@
 		"providers/opencode-zen.kdl",
 		"providers/openrouter.kdl",
 		"providers/qianfan.kdl",
+		"providers/qoder-cn.kdl",
 		"providers/sakana.kdl",
 		"providers/synthetic.kdl",
 		"providers/together.kdl",
@@ -12226,6 +12228,251 @@
 				}
 			},
 			{
+				"source": "providers/qoder-cn.kdl:28",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "deepseek-v4-pro"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"high",
+						"max"
+					]
+				},
+				"catalog": {
+					"inputModalities": [
+						"text"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:33",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "deepseek-v4-flash"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"high",
+						"max"
+					]
+				},
+				"catalog": {
+					"inputModalities": [
+						"text"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:43",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "glm-5.3"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"low",
+						"high",
+						"max"
+					],
+					"requiresEffort": true
+				},
+				"catalog": {
+					"inputModalities": [
+						"text"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:49",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "glm-5.3-flash"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"high",
+						"max"
+					],
+					"requiresEffort": true
+				},
+				"catalog": {
+					"inputModalities": [
+						"text",
+						"image"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:55",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "glm-5.2"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"high",
+						"max"
+					],
+					"requiresEffort": true
+				},
+				"catalog": {
+					"inputModalities": [
+						"text"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:66",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "qwen3.8-max"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"low",
+						"medium",
+						"xhigh"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:70",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "qwen3.8-flash"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"low",
+						"medium",
+						"xhigh"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:74",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "qwen3.7-max"
+					},
+					{
+						"kind": "exact",
+						"value": "qwen3.7-plus"
+					},
+					{
+						"kind": "exact",
+						"value": "qwen3.7-flash"
+					}
+				],
+				"wire": {
+					"thinkingControl": "toggle"
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:81",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "kimi-k2.7-code"
+					}
+				],
+				"wire": {
+					"thinkingControl": "always"
+				},
+				"catalog": {
+					"limitsPatch": {
+						"contextWindow": 256000
+					}
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:92",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "minimax-m2.7"
+					}
+				],
+				"wire": {
+					"thinkingControl": "always"
+				},
+				"catalog": {
+					"inputModalities": [
+						"text"
+					],
+					"limitsPatch": {
+						"contextWindow": 204800
+					}
+				}
+			},
+			{
 				"source": "providers/sakana.kdl:6",
 				"class": "unknown",
 				"providers": [
@@ -14772,6 +15019,18 @@
 				}
 			},
 			{
+				"provider": "qoder-cn",
+				"match": {
+					"exact": [
+						"auto",
+						"ultimate",
+						"performance",
+						"efficient",
+						"lite"
+					]
+				}
+			},
+			{
 				"provider": "xiaomi-token-plan-ams",
 				"match": {
 					"substring": [
@@ -17091,6 +17350,18 @@
 						"label": "GMI Cloud",
 						"url": "https://api.gmi-serving.com/v1/models"
 					}
+				}
+			},
+			{
+				"id": "qoder-cn",
+				"apiKeyFormat": "bearer",
+				"name": "Qoder CN",
+				"login": {
+					"kind": "api-key",
+					"authUrl": "https://qoder.com.cn/account/integrations",
+					"instructions": "Create or copy your Personal Access Token from the Qoder CN dashboard (Account → Integrations).",
+					"prompt": "Paste your Qoder CN Personal Access Token",
+					"placeholder": "pt-..."
 				}
 			},
 			{
