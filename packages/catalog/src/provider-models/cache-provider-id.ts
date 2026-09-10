@@ -6,6 +6,7 @@ export interface ModelCacheProviderIdOptions {
 }
 
 const CREDENTIAL_SCOPED_MODEL_CACHE_PROVIDERS: Readonly<Record<string, true>> = {
+	"qoder-cn": true,
 	"opencode-go": true,
 	"opencode-zen": true,
 	"github-copilot": true,

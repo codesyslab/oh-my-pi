@@ -14137,7 +14137,36 @@
 				}
 			},
 			{
-				"source": "providers/qoder-cn.kdl:81",
+				"source": "providers/qoder-cn.kdl:80",
+				"providers": [
+					"qoder-cn"
+				],
+				"models": [
+					{
+						"kind": "exact",
+						"value": "kimi-k3"
+					}
+				],
+				"wire": {
+					"thinkingControl": "efforts"
+				},
+				"thinking": {
+					"efforts": [
+						"low",
+						"high",
+						"max"
+					],
+					"requiresEffort": true
+				},
+				"catalog": {
+					"inputModalities": [
+						"text",
+						"image"
+					]
+				}
+			},
+			{
+				"source": "providers/qoder-cn.kdl:89",
 				"providers": [
 					"qoder-cn"
 				],
@@ -14157,7 +14186,7 @@
 				}
 			},
 			{
-				"source": "providers/qoder-cn.kdl:92",
+				"source": "providers/qoder-cn.kdl:100",
 				"providers": [
 					"qoder-cn"
 				],

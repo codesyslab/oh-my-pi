@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import { CATALOG_PROVIDERS } from "@oh-my-pi/pi-catalog/provider-models/descriptors";
+import { isCredentialScopedModelCacheProvider } from "@oh-my-pi/pi-catalog/provider-models/cache-provider-id";
 import {
 	QODER_CN_SEED_SPECS,
 	QODER_CN_STATIC_MODELS,
@@ -57,6 +58,8 @@ describe("qoder-cn descriptor", () => {
 		expect(entry?.envVars).toEqual(["QODER_PERSONAL_ACCESS_TOKEN"]);
 		expect(entry?.catalogDiscovery?.label).toBe("Qoder CN");
 		expect(entry?.dynamicModelsAuthoritative).toBe(true);
+		expect(entry?.allowUnauthenticated).toBe(true);
+		expect(isCredentialScopedModelCacheProvider("qoder-cn")).toBe(true);
 	});
 
 	it("exposes the deepseek-v4-pro default through the static seed so it resolves before discovery", () => {
@@ -92,6 +95,7 @@ describe("qoder-cn descriptor", () => {
 			"glm-5.3-flash",
 			"glm-5.2",
 			"kimi-k2.7-code",
+			"kimi-k3",
 			"minimax-m2.7",
 		]);
 		const seedIds = new Set(QODER_CN_SEED_SPECS.map(spec => spec.id));
@@ -127,6 +131,7 @@ describe("fetchQoderCnModels", () => {
 		const entries = [
 			{ key: "qmodel_38max", enable: true, display_name: "Qwen3.8-Max" },
 			{ key: "dmodel", enable: true, display_name: "DeepSeek-V4-Pro" },
+			{ key: "kmodel_latest", enable: true, display_name: "Kimi-K3" },
 			{ key: "future-model", enable: true, display_name: "Future Model" },
 		];
 		const { fetch, calls } = discoveryFetch(entries);
@@ -137,6 +142,8 @@ describe("fetchQoderCnModels", () => {
 		expect(byId.get("qwen3.8-max")?.name).toBe("Qwen3.8-Max");
 		expect(byId.get("deepseek-v4-pro")?.requestModelId).toBe("dmodel");
 		expect(byId.get("deepseek-v4-pro")?.name).toBe("DeepSeek-V4-Pro");
+		expect(byId.get("kimi-k3")?.requestModelId).toBe("kmodel_latest");
+		expect(byId.get("kimi-k3")?.name).toBe("Kimi-K3");
 		// Unknown wire keys stay keyed on their wire key with the gateway display name.
 		expect(byId.get("future-model")?.requestModelId).toBe("future-model");
 		expect(byId.get("future-model")?.name).toBe("Future Model");

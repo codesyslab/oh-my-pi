@@ -529,6 +529,14 @@ export const QODER_CN_STATIC_MODELS: readonly QoderCnStaticModel[] = [
 		reasoning: { kind: "efforts", efforts: [Effort.High, Effort.Max], disableAllowed: false },
 	},
 	{
+		id: "kimi-k3",
+		wireKey: "kmodel_latest",
+		displayName: "Kimi-K3",
+		contextWindow: QODER_CN_CTX_1M,
+		vision: true,
+		reasoning: { kind: "efforts", efforts: [Effort.Low, Effort.High, Effort.Max], disableAllowed: false },
+	},
+	{
 		id: "kimi-k2.7-code",
 		wireKey: "kmodel",
 		displayName: "Kimi-K2.7-Code",

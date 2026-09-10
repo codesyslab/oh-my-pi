@@ -75,6 +75,14 @@ provider "qoder-cn" {
 		thinking-control "toggle"
 	}
 	// ── Kimi ────────────────────────────────────────────────────────────────
+	// Kimi-K3 accepts the live-verified low/high/max effort ladder and images.
+	// Thinking-off is not verified, so keep an explicit effort mandatory.
+	models "kimi-k3" {
+		input-modalities "text" "image"
+		thinking-control "efforts"
+		thinking-efforts "low" "high" "max"
+		thinking-requires-effort #true
+	}
 	// Kimi-K2.7-Code: always thinks (no control — send NO reasoning
 	// parameters). Pin the 256K verified window — the gateway advertises it,
 	// but pin anyway so a future 1M option can't widen the catalog row.

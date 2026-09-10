@@ -19,6 +19,7 @@ describe("qoder-cn cascade resolution", () => {
 
 	it("resolves DeepSeek-V4-Pro on qoder-cn to a high/max effort ladder", () => {
 		const resolved = resolveCascade({
+			api: "qoder-cn",
 			provider: "qoder-cn",
 			class: "deepseek",
 			family: "pro",
@@ -35,6 +36,7 @@ describe("qoder-cn cascade resolution", () => {
 		const built = buildModel(spec);
 		expect(built.input).toEqual(["text"]);
 		const resolved = resolveCascade({
+			api: "qoder-cn",
 			provider: "qoder-cn",
 			class: "glm",
 			model: "glm-5.3",
@@ -49,6 +51,7 @@ describe("qoder-cn cascade resolution", () => {
 		const built = buildModel(spec);
 		expect(built.input).toEqual(["text", "image"]);
 		const resolved = resolveCascade({
+			api: "qoder-cn",
 			provider: "qoder-cn",
 			class: "glm",
 			model: "glm-5.3-flash",
@@ -65,6 +68,7 @@ describe("qoder-cn cascade resolution", () => {
 		expect(built.contextWindow).toBe(204_800);
 		// The KDL limits-patch is the authority when discovery surfaces a stale 1M row.
 		const resolved = resolveCascade({
+			api: "qoder-cn",
 			provider: "qoder-cn",
 			class: "minimax",
 			family: "m2",
@@ -80,6 +84,7 @@ describe("qoder-cn cascade resolution", () => {
 		const built = buildModel(spec);
 		expect(built.contextWindow).toBe(256_000);
 		const resolved = resolveCascade({
+			api: "qoder-cn",
 			provider: "qoder-cn",
 			class: "kimi",
 			model: "kimi-k2.7-code",
@@ -89,8 +94,17 @@ describe("qoder-cn cascade resolution", () => {
 		expect(limitsPatch?.contextWindow).toBe(256_000);
 	});
 
+	it("resolves Kimi-K3 to the live-verified low/high/max ladder", () => {
+		const spec = QODER_CN_SEED_SPECS.find(model => model.id === "kimi-k3") as ModelSpec;
+		const built = buildModel(spec);
+		expect(built.input).toEqual(["text", "image"]);
+		expect(built.thinking?.efforts).toEqual([Effort.Low, Effort.High, Effort.Max]);
+		expect(built.thinking?.requiresEffort).toBe(true);
+	});
+
 	it("resolves the qwen3.8 effort ladder to low/medium/xhigh", () => {
 		const resolved = resolveCascade({
+			api: "qoder-cn",
 			provider: "qoder-cn",
 			class: "qwen",
 			model: "qwen3.8-max",

@@ -603,6 +603,9 @@ export const CATALOG_PROVIDERS = [
 		defaultModel: "deepseek-v4-pro",
 		envVars: ["QODER_PERSONAL_ACCESS_TOKEN"],
 		createModelManagerOptions: (config: ModelManagerConfig) => qoderCnModelManagerOptions(config),
+		// The unauthenticated manager exposes only the vendor-verified static seed;
+		// live discovery remains PAT-gated inside qoderCnModelManagerOptions.
+		allowUnauthenticated: true,
 		dynamicModelsAuthoritative: true,
 		catalogDiscovery: { label: "Qoder CN" },
 	},
