@@ -336,6 +336,214 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		expect(forwarded?.customTools?.map(tool => tool.name)).toEqual(["mcp__private_read"]);
 	});
 
+	it("narrows inherited MCP proxy tools by the agent's mcpServers allowlist", async () => {
+		// The parent owns three MCP servers. The child agent declares
+		// `mcpServers: ["exa"]`, so only the exa proxy must reach
+		// `customTools`. github/git are filtered out by exact server id,
+		// not by a lossy name prefix.
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+		const mcpManager = {
+			getTools: () => [
+				{ name: "mcp__exa_search", label: "exa/search", mcpServerName: "exa" },
+				{ name: "mcp__github_issues", label: "github/issues", mcpServerName: "github" },
+				{ name: "mcp__git_log", label: "git/log", mcpServerName: "git" },
+			],
+		} as unknown as MCPManager;
+
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "mcp-filtered-child",
+			mcpManager,
+			agent: { ...baseAgent, mcpServers: ["exa"] },
+		});
+
+		expect(result.exitCode).toBe(0);
+		const forwarded = spy.mock.calls[0]?.[0];
+		expect(forwarded?.customTools?.map(tool => tool.name)).toEqual(["mcp__exa_search"]);
+	});
+
+	it("omits every inherited MCP proxy tool when the agent declares mcpServers: []", async () => {
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+		const mcpManager = {
+			getTools: () => [{ name: "mcp__exa_search", label: "exa/search", mcpServerName: "exa" }],
+		} as unknown as MCPManager;
+
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "mcp-empty-child",
+			mcpManager,
+			agent: { ...baseAgent, mcpServers: [] },
+		});
+
+		expect(result.exitCode).toBe(0);
+		const forwarded = spy.mock.calls[0]?.[0];
+		// Explicit-empty allowlist drops the proxy list. The child still
+		// gets the parent MCP manager reference so its manager-side state
+		// stays consistent — only the proxy *tools* are removed.
+		expect(forwarded?.mcpManager).toBe(mcpManager);
+		expect(forwarded?.customTools).toBeUndefined();
+	});
+
+	it("persists the mcpServers allowlist on session_init for cold revival", async () => {
+		const session = yieldEmittingSession();
+		const initSpy = vi.spyOn(session.sessionManager, "appendSessionInit");
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+
+		await runSubprocess({
+			...baseOptions,
+			id: "mcp-persist-child",
+			agent: { ...baseAgent, mcpServers: ["exa", "github"] },
+		});
+
+		expect(initSpy).toHaveBeenCalledWith(expect.objectContaining({ mcpServers: ["exa", "github"] }));
+	});
+
+	it("persists an explicit-empty mcpServers list on session_init (not undefined)", async () => {
+		// An empty list is meaningful — it locks the child out of MCP — and
+		// must round-trip as `[]` rather than being normalized to `undefined`,
+		// otherwise cold revival would widen back to the parent's full set.
+		const session = yieldEmittingSession();
+		const initSpy = vi.spyOn(session.sessionManager, "appendSessionInit");
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+
+		await runSubprocess({
+			...baseOptions,
+			id: "mcp-empty-persist-child",
+			agent: { ...baseAgent, mcpServers: [] },
+		});
+
+		const persisted = initSpy.mock.calls[0]?.[0] as { mcpServers?: string[] | "*" } | undefined;
+		expect(persisted?.mcpServers).toEqual([]);
+	});
+
+	it("task.agentMcpServers settings override beats agent frontmatter", async () => {
+		// The harness-level record must win so an operator can assign a
+		// central MCP subset to a specific agent without editing the
+		// agent's bundled prompt or any user's frontmatter.
+		const settings = Settings.isolated({ "task.agentMcpServers": { task: ["exa"] } });
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+		const mcpManager = {
+			getTools: () => [
+				{ name: "mcp__exa_search", label: "exa/search", mcpServerName: "exa" },
+				{ name: "mcp__github_issues", label: "github/issues", mcpServerName: "github" },
+			],
+		} as unknown as MCPManager;
+
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "mcp-settings-override-child",
+			settings,
+			mcpManager,
+			agent: { ...baseAgent, mcpServers: ["github"] },
+		});
+
+		expect(result.exitCode).toBe(0);
+		// The settings `["exa"]` wins; the agent's `["github"]` is dropped.
+		expect(spy.mock.calls[0]?.[0]?.customTools?.map(tool => tool.name)).toEqual(["mcp__exa_search"]);
+		// Forwarded to the SDK as the exact effective value (settings > frontmatter).
+		expect(spy.mock.calls[0]?.[0]?.allowedMCPServers).toEqual(["exa"]);
+	});
+
+	it("task.agentMcpServers settings fall back to frontmatter when entry is absent", async () => {
+		// An absent entry on the settings record must not influence the
+		// effective value — the agent's own mcpServers applies.
+		const settings = Settings.isolated({ "task.agentMcpServers": { scout: ["exa"] } });
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+		const mcpManager = {
+			getTools: () => [
+				{ name: "mcp__exa_search", label: "exa/search", mcpServerName: "exa" },
+				{ name: "mcp__github_issues", label: "github/issues", mcpServerName: "github" },
+			],
+		} as unknown as MCPManager;
+
+		const result = await runSubprocess({
+			...baseOptions,
+			id: "mcp-frontmatter-fallback-child",
+			settings,
+			mcpManager,
+			agent: { ...baseAgent, name: "task", mcpServers: ["github"] },
+		});
+
+		expect(result.exitCode).toBe(0);
+		// No entry for `task` in settings → fall through to frontmatter `["github"]`.
+		expect(spy.mock.calls[0]?.[0]?.customTools?.map(tool => tool.name)).toEqual(["mcp__github_issues"]);
+		// Forwarded as the frontmatter value, since settings had no entry for this agent.
+		expect(spy.mock.calls[0]?.[0]?.allowedMCPServers).toEqual(["github"]);
+	});
+
+	it("task.agentMcpServers settings '*' preserves all (no narrowing)", async () => {
+		const settings = Settings.isolated({ "task.agentMcpServers": { task: "*" } });
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+		const mcpManager = {
+			getTools: () => [
+				{ name: "mcp__exa_search", label: "exa/search", mcpServerName: "exa" },
+				{ name: "mcp__github_issues", label: "github/issues", mcpServerName: "github" },
+			],
+		} as unknown as MCPManager;
+
+		await runSubprocess({
+			...baseOptions,
+			id: "mcp-wildcard-child",
+			settings,
+			mcpManager,
+			agent: { ...baseAgent, mcpServers: ["only-this-not-loaded"] },
+		});
+
+		const proxyNames = spy.mock.calls[0]?.[0]?.customTools?.map(tool => tool.name).sort();
+		expect(proxyNames).toEqual(["mcp__exa_search", "mcp__github_issues"]);
+		// Effective value is the settings' "*"; forward it as-is so SDK
+		// callbacks preserve-all rather than applying a narrowed subset.
+		expect(spy.mock.calls[0]?.[0]?.allowedMCPServers).toBe("*");
+	});
+
+	it("task.agentMcpServers settings [] locks the agent out of MCP (no fallback)", async () => {
+		// An empty list at the settings layer is authoritative: the
+		// frontmatter's `["github"]` must NOT fall through. This is the
+		// harness-level lockdown scenario.
+		const settings = Settings.isolated({ "task.agentMcpServers": { task: [] } });
+		const session = yieldEmittingSession();
+		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+		const mcpManager = {
+			getTools: () => [{ name: "mcp__github_issues", label: "github/issues", mcpServerName: "github" }],
+		} as unknown as MCPManager;
+
+		await runSubprocess({
+			...baseOptions,
+			id: "mcp-locked-child",
+			settings,
+			mcpManager,
+			agent: { ...baseAgent, mcpServers: ["github"] },
+		});
+
+		expect(spy.mock.calls[0]?.[0]?.customTools).toBeUndefined();
+		// The settings' [] is authoritative — forward as [] so SDK
+		// callbacks drop every inherited proxy tool on rebuild too.
+		expect(spy.mock.calls[0]?.[0]?.allowedMCPServers).toEqual([]);
+	});
+
+	it("persists the effective (settings > frontmatter) mcpServers on session_init", async () => {
+		// Cold revival must restore the filter the live run actually used,
+		// even when the override came from settings rather than frontmatter.
+		const settings = Settings.isolated({ "task.agentMcpServers": { task: ["exa"] } });
+		const session = yieldEmittingSession();
+		const initSpy = vi.spyOn(session.sessionManager, "appendSessionInit");
+		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
+
+		await runSubprocess({
+			...baseOptions,
+			id: "mcp-effective-persist-child",
+			settings,
+			agent: { ...baseAgent, mcpServers: ["github"] },
+		});
+
+		expect(initSpy).toHaveBeenCalledWith(expect.objectContaining({ mcpServers: ["exa"] }));
+	});
+
 	it("preserves the legacy result shape when no output schema is selected", async () => {
 		const session = yieldEmittingSession();
 		vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));

@@ -64,6 +64,11 @@ function toFrontmatter(agent: AgentDefinition): Record<string, unknown> {
 	if (agent.thinkingLevel) frontmatter.thinkingLevel = agent.thinkingLevel;
 	if (agent.output !== undefined) frontmatter.output = agent.output;
 	if (agent.blocking) frontmatter.blocking = true;
+	if (agent.mcpServers !== undefined) {
+		// Empty array is meaningful (drops all inherited MCP proxy tools), so
+		// always emit it when present; absent and "*" both mean "no narrowing".
+		frontmatter.mcpServers = agent.mcpServers;
+	}
 
 	return frontmatter;
 }

@@ -11,6 +11,7 @@ import {
 	parseModelString,
 	pickDefaultAvailableModel,
 	resolveAgentAdvisorSelection,
+	resolveAgentMcpServers,
 	resolveAgentModelPatterns,
 	resolveAgentModelSelection,
 	resolveAgentPrewalkPattern,
@@ -1030,6 +1031,37 @@ describe("resolveAgentAdvisorSelection", () => {
 	test("blank override falls through to the agent definition", () => {
 		expect(resolveAgentAdvisorSelection({ settingsOverride: "  ", agentAdvisor: true })).toEqual({});
 		expect(resolveAgentAdvisorSelection({ settingsOverride: "", agentAdvisor: false })).toBeUndefined();
+	});
+});
+
+describe("resolveAgentMcpServers", () => {
+	test("absent settings and frontmatter ⇒ undefined (preserve all)", () => {
+		expect(resolveAgentMcpServers({})).toBeUndefined();
+	});
+
+	test("agent frontmatter alone decides when settings are absent", () => {
+		expect(resolveAgentMcpServers({ agentMcpServers: "*" })).toBe("*");
+		expect(resolveAgentMcpServers({ agentMcpServers: ["exa", "github"] })).toEqual(["exa", "github"]);
+		expect(resolveAgentMcpServers({ agentMcpServers: [] })).toEqual([]);
+	});
+
+	test("settings override beats the agent frontmatter", () => {
+		// The harness-level record is the override surface; an agent author
+		// who declares mcpServers cannot widen past a harness-pinned subset.
+		expect(resolveAgentMcpServers({ settingsOverride: ["exa"], agentMcpServers: ["github", "git"] })).toEqual([
+			"exa",
+		]);
+		expect(resolveAgentMcpServers({ settingsOverride: "*", agentMcpServers: ["exa"] })).toBe("*");
+		expect(resolveAgentMcpServers({ settingsOverride: [], agentMcpServers: ["exa"] })).toEqual([]);
+	});
+
+	test("empty settings array is authoritative — does not fall through to frontmatter", () => {
+		// An explicit empty list at the harness level must lock the agent
+		// out of MCP; falling through to frontmatter would silently widen
+		// a deliberate lockdown.
+		expect(resolveAgentMcpServers({ settingsOverride: [], agentMcpServers: ["exa"] })).toEqual([]);
+		expect(resolveAgentMcpServers({ settingsOverride: [], agentMcpServers: "*" })).toEqual([]);
+		expect(resolveAgentMcpServers({ settingsOverride: [] })).toEqual([]);
 	});
 });
 describe("resolveAgentModelPatterns", () => {

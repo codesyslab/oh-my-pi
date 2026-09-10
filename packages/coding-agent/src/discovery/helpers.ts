@@ -299,6 +299,19 @@ export interface ParsedAgentFields {
 	prewalk?: boolean | string;
 	/** `true` = advise with the default advisor-role model; string = advise with that model pattern. */
 	advisor?: boolean | string;
+	/**
+	 * MCP server allowlist for inherited parent MCP connections.
+	 *
+	 * - `undefined` (omitted) or `"*"` → preserve the parent's full MCP tool surface.
+	 * - `[]` (explicit empty) → expose zero inherited MCP proxy tools.
+	 * - non-empty `string[]` → only expose proxy tools whose `mcpServerName` is in this list.
+	 *
+	 * Filtered by exact MCP server identity (the raw `mcpServerName` metadata), not by
+	 * lossy tool-name prefixes; tools without resolvable server identity are dropped
+	 * whenever an allowlist is present so the boundary cannot be widened through
+	 * nameless reconnects.
+	 */
+	mcpServers?: string[] | "*";
 }
 
 /**
@@ -379,6 +392,29 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 	const autoloadSkills = parseArrayOrCSV(frontmatter.autoloadSkills)
 		?.map(s => s.trim())
 		.filter(Boolean);
+
+	// mcpServers mirrors the `spawns` shape: array, CSV, or "*". An explicit
+	// empty array (`[]`) is preserved as `[]` (no MCP proxy tools); omitted
+	// (`undefined`) keeps the parent's full MCP tool surface.
+	let mcpServers: string[] | "*" | undefined;
+	if (frontmatter.mcpServers === "*") {
+		mcpServers = "*";
+	} else if (Array.isArray(frontmatter.mcpServers)) {
+		const filtered = frontmatter.mcpServers.filter((item): item is string => typeof item === "string");
+		// Preserve `[]` distinct from omitted; trim/dedupe non-empty entries so a
+		// round-tripped list stays usable as an exact-membership set.
+		const normalized = filtered.map(s => s.trim()).filter(Boolean);
+		mcpServers = Array.from(new Set(normalized));
+	} else if (typeof frontmatter.mcpServers === "string") {
+		const trimmed = frontmatter.mcpServers.trim();
+		if (trimmed === "*") {
+			mcpServers = "*";
+		} else {
+			const parsed = parseCSV(trimmed);
+			mcpServers = Array.from(new Set(parsed.map(s => s.trim()).filter(Boolean)));
+		}
+	}
+
 	return {
 		name,
 		description,
@@ -392,6 +428,7 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 		readSummarize,
 		prewalk,
 		advisor,
+		mcpServers,
 	};
 }
 

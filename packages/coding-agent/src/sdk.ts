@@ -140,6 +140,7 @@ import {
 	parseMCPToolName,
 	shouldFilterBrowserMCPForPrelude,
 } from "./mcp";
+import { filterMCPServerInstructionsByAllowed, filterMCPToolsByAllowlist } from "./mcp/config";
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
 import { MEMORY_BACKEND_TOOL_NAMES } from "./memory-backend/tool-names";
@@ -542,6 +543,19 @@ export interface CreateAgentSessionOptions {
 	enableMCP?: boolean;
 	/** Existing MCP manager to reuse when MCP is enabled (skips discovery, propagates to toolSession). */
 	mcpManager?: MCPManager;
+	/**
+	 * Per-session MCP server allowlist. Mirrors the executor's effective
+	 * `mcpServers` (settings > frontmatter) so the SDK callbacks that read
+	 * directly from the manager — `reconcileBrowserMcpFilter` and
+	 * `getMcpServerInstructions` — apply the same exact-identity filter as
+	 * the live proxy tools. `undefined` or `"*"` preserves every tool the
+	 * manager exposes; `[]` drops every inherited MCP tool (so even a
+	 * browser-toggle reconcile cannot re-enable excluded servers); a
+	 * non-empty list keeps only tools whose raw `mcpServerName` is in the
+	 * list. Filtering is applied at the SDK boundary, not at the manager,
+	 * so a shared parent manager stays authoritative for other consumers.
+	 */
+	allowedMCPServers?: string[] | "*";
 
 	/** Enable LSP integration (tool, formatting, diagnostics, warmup). Default: true */
 	enableLsp?: boolean;
@@ -3111,7 +3125,15 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			// `getServerInstructions()` are empty until the background connect
 			// completes; the rebuild that `refreshMCPTools` triggers post-discovery
 			// then picks up the mounted routes and any connected-server instructions.
-			const serverInstructions = mcpManager?.getServerInstructions();
+			// Filter the parent's full instructions map by `allowedMCPServers`
+			// so excluded servers' instructions never reach the prompt at the
+			// initial build path either — the live `getMcpServerInstructions`
+			// callback applies the same exact-identity filter on the rebuild
+			// path.
+			const rawServerInstructions = mcpManager?.getServerInstructions();
+			const serverInstructions = rawServerInstructions
+				? filterMCPServerInstructionsByAllowed(rawServerInstructions, options.allowedMCPServers)
+				: rawServerInstructions;
 			// Drive guidance off the auto-learn BUILTINS that createTools actually built
 			// (provenance, not just an active name): `builtInToolNames` excludes a
 			// custom/extension tool that merely shares the name, and reflects the
@@ -3760,7 +3782,13 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 			reconcileBrowserMcpFilter: mcpManager
 				? async enabled => {
 						await mcpManager.reconcileBrowserFilter(enabled);
-						return mcpManager.getTools();
+						// Filter by `options.allowedMCPServers` so a browser-toggle
+						// refresh cannot re-enable excluded servers in a child that
+						// inherited a shared parent manager. Same exact-identity
+						// semantics as `createMCPProxyTools` and the
+						// `session_init.mcpServers` revival filter; a `[]` at this
+						// layer is authoritative (no fall-through to frontmatter).
+						return filterMCPToolsByAllowlist(mcpManager.getTools(), options.allowedMCPServers);
 					}
 				: undefined,
 			memoryAgentDir: agentDir,
@@ -3806,8 +3834,16 @@ async function createAgentSessionScoped(options: CreateAgentSessionOptions): Pro
 				? () => {
 						const raw = mcpManager.getServerInstructions();
 						if (!raw || raw.size === 0) return raw;
+						// Filter the parent's full instructions map by
+						// `options.allowedMCPServers` so excluded server
+						// instructions never reach the child system prompt.
+						// Same exact-identity check as
+						// `createMCPProxyTools`/`session_init.mcpServers`
+						// revival/`filterMCPServersByAllowlist`.
+						const filtered = filterMCPServerInstructionsByAllowed(raw, options.allowedMCPServers);
+						if (filtered.size === 0) return filtered;
 						const out = new Map<string, string>();
-						for (const [name, text] of raw) {
+						for (const [name, text] of filtered) {
 							out.set(
 								name,
 								text.length > MAX_MCP_INSTRUCTIONS_LENGTH ? text.slice(0, MAX_MCP_INSTRUCTIONS_LENGTH) : text,

@@ -89,7 +89,7 @@ async function createPersistedSession(
 	restrictToolNames?: boolean,
 	modelRole?: string,
 	advisor?: string,
-	contract?: { tools?: string[]; readOnly?: boolean; agent?: string },
+	contract?: { tools?: string[]; readOnly?: boolean; agent?: string; mcpServers?: string[] | "*" },
 ): Promise<string> {
 	const manager = SessionManager.create(cwd, path.join(cwd, "sessions"));
 	const sessionFile = manager.getSessionFile();
@@ -104,6 +104,7 @@ async function createPersistedSession(
 		advisor,
 		readOnly: contract?.readOnly,
 		agent: contract?.agent,
+		mcpServers: contract?.mcpServers,
 	});
 	manager.appendMessage({
 		role: "assistant",
@@ -658,6 +659,96 @@ describe("persisted subagent revival", () => {
 			AgentLifecycleManager.resetGlobalForTests();
 			AgentRegistry.resetGlobalForTests();
 			IrcBus.resetGlobalForTests();
+		});
+	});
+
+	describe("MCP server allowlist on revival", () => {
+		function proxy(server: string, tool: string) {
+			return { name: `mcp__${server}_${tool}`, mcpServerName: server };
+		}
+
+		it("filters the revived MCP proxy tool surface by the persisted mcpServers list", async () => {
+			const cwd = makeTempDir("@pi-revive-mcp-subset-");
+			const sessionFile = await createPersistedSession(cwd, undefined, undefined, undefined, {
+				mcpServers: ["exa"],
+			});
+			const parentTools = [proxy("exa", "search"), proxy("github", "issues"), proxy("git", "log")];
+			const getTools = vi.fn(() => parentTools);
+			MCPManager.setInstance({ getTools } as unknown as MCPManager);
+			let capturedOptions: CreateAgentSessionOptions | undefined;
+			vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
+				capturedOptions = options;
+				return { session: createRevivedSession([]).session } as CreateAgentSessionResult;
+			});
+
+			const ref = createRef(sessionFile);
+			const reviver = await createFactory(cwd)(ref);
+			if (!reviver) throw new Error("Expected a persisted reviver");
+			await reviver(ref);
+
+			const proxyNames = capturedOptions?.customTools?.map(tool => tool.name);
+			// Only the exa proxy survives; github/git are excluded by the
+			// persisted allowlist and cannot sneak back through revival.
+			expect(proxyNames).toEqual(["mcp__exa_search"]);
+			// Revival forwards the persisted effective allowlist so SDK
+			// callbacks (reconcileBrowserMcpFilter, getMcpServerInstructions)
+			// apply the same filter, not just the initial proxy tool pass.
+			expect(capturedOptions?.allowedMCPServers).toEqual(["exa"]);
+			expect(getTools).toHaveBeenCalled();
+		});
+
+		it("drops every revived MCP proxy tool when the persisted allowlist is []", async () => {
+			const cwd = makeTempDir("@pi-revive-mcp-none-");
+			const sessionFile = await createPersistedSession(cwd, undefined, undefined, undefined, {
+				mcpServers: [],
+			});
+			const parentTools = [proxy("exa", "search"), proxy("github", "issues")];
+			const getTools = vi.fn(() => parentTools);
+			MCPManager.setInstance({ getTools } as unknown as MCPManager);
+			let capturedOptions: CreateAgentSessionOptions | undefined;
+			vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
+				capturedOptions = options;
+				return { session: createRevivedSession([]).session } as CreateAgentSessionResult;
+			});
+
+			const ref = createRef(sessionFile);
+			const reviver = await createFactory(cwd)(ref);
+			if (!reviver) throw new Error("Expected a persisted reviver");
+			await reviver(ref);
+
+			// An explicit-empty allowlist means no inherited MCP proxy tools.
+			// The persisted contract must be honored — no widening on revival.
+			expect(capturedOptions?.customTools).toBeUndefined();
+			// The empty list is authoritative: forward as [] (not "*")
+			// so SDK callbacks drop every inherited proxy tool.
+			expect(capturedOptions?.allowedMCPServers).toEqual([]);
+			expect(getTools).toHaveBeenCalled();
+		});
+
+		it("preserves the parent's full inherited MCP surface when mcpServers is omitted", async () => {
+			// Existing cold-revived contracts from before mcpServers existed
+			// must keep today's behavior: every parent proxy tool comes back.
+			const cwd = makeTempDir("@pi-revive-mcp-default-");
+			const sessionFile = await createPersistedSession(cwd);
+			const parentTools = [proxy("exa", "search"), proxy("github", "issues"), proxy("git", "log")];
+			MCPManager.setInstance({ getTools: () => parentTools } as unknown as MCPManager);
+			let capturedOptions: CreateAgentSessionOptions | undefined;
+			vi.spyOn(sdkModule, "createAgentSession").mockImplementation(async options => {
+				capturedOptions = options;
+				return { session: createRevivedSession([]).session } as CreateAgentSessionResult;
+			});
+
+			const ref = createRef(sessionFile);
+			const reviver = await createFactory(cwd)(ref);
+			if (!reviver) throw new Error("Expected a persisted reviver");
+			await reviver(ref);
+
+			const proxyNames = capturedOptions?.customTools?.map(tool => tool.name).sort();
+			expect(proxyNames).toEqual(["mcp__exa_search", "mcp__git_log", "mcp__github_issues"]);
+			// Omitted `mcpServers` ⇒ preserve-all: forward as "*" so SDK
+			// callbacks don't apply a misleading allowlist to a contract
+			// that predates the field.
+			expect(capturedOptions?.allowedMCPServers).toBe("*");
 		});
 	});
 });

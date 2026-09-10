@@ -7,7 +7,7 @@
 import * as path from "node:path";
 import * as url from "node:url";
 import type { TSchema } from "@oh-my-pi/pi-ai";
-import { logger } from "@oh-my-pi/pi-utils";
+import { $env, logger } from "@oh-my-pi/pi-utils";
 import type { EffectiveExtensionRoots, SourceMeta } from "../capability/types";
 import { resolveConfigValue } from "../config/resolve-config-value";
 import type { CustomTool } from "../extensibility/custom-tools/types";
@@ -32,6 +32,7 @@ import {
 	type LoadMCPConfigsOptions,
 	type LoadMCPConfigsResult,
 	loadAllMCPConfigs,
+	parseMCPServerAllowlist,
 	validateServerConfig,
 } from "./config";
 import {
@@ -185,6 +186,13 @@ export interface MCPDiscoverOptions {
 	filterBrowser?: boolean;
 	/** Session-local extension roots for post-startup rediscovery (explicit + mode + configured). */
 	extensionRoots?: EffectiveExtensionRoots;
+	/**
+	 * Optional exact-server allowlist override. When set, supersedes the
+	 * `OMP_MCP_SERVER_ALLOWLIST` env value (env is the default for top-level
+	 * Paseo-launched workers; explicit options exist for tests and embedded
+	 * entrypoints that want to pin the behavior).
+	 */
+	mcpServerAllowlist?: string[];
 	/** Called when MCP server connection state changes. */
 	onStatus?: (event: McpConnectionStatusEvent) => void;
 }
@@ -466,7 +474,28 @@ export class MCPManager {
 	 * Returns tools and any connection errors.
 	 */
 	async discoverAndConnect(options?: MCPDiscoverOptions): Promise<MCPLoadResult> {
-		this.#discoverOptions = options ? { ...options } : undefined;
+		// Process-scoped exact-server allowlist (env-driven). Parsed once per
+		// discover call so reconnect/reload sees the current `$env` value; an
+		// explicit caller override (via `options.mcpServerAllowlist`) wins so
+		// tests and embedded entrypoints can pin the behavior.
+		const envAllowlist = parseMCPServerAllowlist($env.OMP_MCP_SERVER_ALLOWLIST);
+		const allowlist = options?.mcpServerAllowlist ?? envAllowlist;
+		// Persist the *resolved* allowlist so subsequent reloads (e.g.
+		// `#applyBrowserFilter` triggered by a `browser.enabled` toggle) see
+		// the same effective filter. Previously the manager only stored the
+		// raw `options`, so a Paseo worker whose only declaration was the
+		// `OMP_MCP_SERVER_ALLOWLIST` env value would silently reconnect
+		// excluded browser servers after a toggle.
+		this.#discoverOptions = {
+			...options,
+			...(allowlist !== undefined && { mcpServerAllowlist: allowlist }),
+		};
+		if (allowlist !== undefined) {
+			logger.info("MCP server allowlist applied before connect", {
+				allowed: allowlist,
+				source: options?.mcpServerAllowlist !== undefined ? "options" : "OMP_MCP_SERVER_ALLOWLIST",
+			});
+		}
 		let loadedConfigs: LoadMCPConfigsResult;
 		try {
 			loadedConfigs = await this.loadConfigs(this.cwd, {
@@ -474,6 +503,7 @@ export class MCPManager {
 				filterExa: options?.filterExa,
 				filterBrowser: options?.filterBrowser,
 				extensionRoots: options?.extensionRoots,
+				mcpServerAllowlist: allowlist,
 			});
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
@@ -505,6 +535,11 @@ export class MCPManager {
 			filterExa: options?.filterExa,
 			filterBrowser: false,
 			extensionRoots: options?.extensionRoots,
+			// Re-apply the effective allowlist (env + options, resolved by
+			// `discoverAndConnect`) so a browser-toggle reload cannot
+			// re-connect excluded servers in a Paseo worker whose only
+			// declaration was `OMP_MCP_SERVER_ALLOWLIST`.
+			mcpServerAllowlist: options?.mcpServerAllowlist,
 		});
 		const browserConfigs: Record<string, MCPServerConfig> = {};
 		const browserSources: Record<string, SourceMeta> = {};

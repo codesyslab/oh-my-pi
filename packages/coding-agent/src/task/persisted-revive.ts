@@ -122,7 +122,11 @@ export function createPersistedSubagentReviverFactory(
 			// state: same-name MCP tools are untrusted capability sources.
 			const restrictToolNames = init.restrictToolNames === true;
 			const mcpManager = restrictToolNames ? undefined : MCPManager.instance();
-			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
+			// Cold revival re-applies the same MCP allowlist the live spawn used
+			// (`init.mcpServers`), so a parked subagent whose definition
+			// restricted it to e.g. `["web"]` cannot regain `["git"]` tools just
+			// because the parent session has since loaded more MCP servers.
+			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager, init.mcpServers ?? "*") : [];
 			const { session } = await createAgentSession({
 				cwd: ctx.session.sessionManager.getCwd(),
 				authStorage: ctx.authStorage,
@@ -180,6 +184,12 @@ export function createPersistedSubagentReviverFactory(
 					: {
 							enableMCP: !mcpManager,
 							mcpManager,
+							// Forward the persisted effective allowlist so the SDK
+							// callbacks (`reconcileBrowserMcpFilter` and
+							// `getMcpServerInstructions`) honor the same
+							// exact-identity filter on cold revival, not just on
+							// the initial proxy tool pass.
+							allowedMCPServers: init.mcpServers ?? "*",
 							customTools: mcpProxyTools.length > 0 ? mcpProxyTools : undefined,
 						}),
 			});

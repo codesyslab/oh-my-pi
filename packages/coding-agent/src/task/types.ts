@@ -390,6 +390,16 @@ export interface AgentDefinition {
 	prewalk?: boolean | string;
 	/** Advisor for spawned sessions of this agent: `true` = advise with the default advisor-role model, string = advise with that model pattern (optional `:level` suffix). Absent/`false` = no advisor. */
 	advisor?: boolean | string;
+	/**
+	 * MCP server allowlist for inherited parent MCP connections. Omitted
+	 * (`undefined`) or `"*"` preserves the parent's full MCP tool surface;
+	 * an explicit `[]` exposes zero inherited MCP proxy tools; a non-empty
+	 * list restricts the proxy tool surface to tools whose `mcpServerName`
+	 * matches an entry. Filter is exact MCP server identity, not a lossy
+	 * tool-name prefix. Persisted on `session_init` so cold revival honors
+	 * the same allowlist.
+	 */
+	mcpServers?: string[] | "*";
 	source: AgentSource;
 	filePath?: string;
 }

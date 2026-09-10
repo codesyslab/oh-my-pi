@@ -5163,6 +5163,18 @@ export const SETTINGS_SCHEMA = {
 		type: "record",
 		default: {} as Record<string, string>,
 	},
+	"task.agentMcpServers": {
+		// Per-agent override of the inherited MCP server allowlist applied by
+		// the task executor. Each value is either `"*"` (preserve parent's
+		// full MCP surface — equivalent to omitting the override) or an
+		// exact server-name list (an empty array drops every inherited MCP
+		// proxy tool). An absent entry falls back to the agent definition's
+		// `mcpServers` frontmatter, which itself falls through to "preserve
+		// all" when omitted. Useful for harness-level MCP subsets without
+		// rewriting bundled agent prompts.
+		type: "record",
+		default: {} as Record<string, string[] | "*">,
+	},
 	"task.prewalk": {
 		type: "boolean",
 		default: false,

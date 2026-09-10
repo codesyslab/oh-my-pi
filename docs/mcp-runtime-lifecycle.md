@@ -147,6 +147,41 @@ Server and tool name components are lowercased and sanitized to letters/undersco
 
 Both return structured tool output and convert remaining transport/tool errors into `MCP error: ...` tool content (abort remains abort).
 
+### Subagent MCP allowlist
+
+Task agents may declare an `mcpServers` frontmatter field (`packages/coding-agent/src/discovery/helpers.ts` → `parseAgentFields`). The executor's `createMCPProxyTools(mcpManager, allowedMCPServers)` (`packages/coding-agent/src/task/executor.ts`) narrows the inherited proxy surface by exact `mcpServerName` identity before handing tools to `createAgentSession`. The filter is re-applied on cold revival from `session_init.mcpServers`, so a parked subagent cannot regain excluded tools through inherited manager discovery or `alwaysInclude` paths. See [`task-agent-discovery.md`](./task-agent-discovery.md#agent-definition-shape) for the parser contract.
+
+### Per-agent MCP override (settings record)
+
+`task.agentMcpServers` is the harness-level MCP override record, declared in `packages/coding-agent/src/config/settings-schema.ts` as `Record<string, string[] | "*">`. It mirrors the precedence/style of `task.agentPrewalk` and `task.agentAdvisor`: each agent name maps to `"*"` (preserve parent's full MCP surface) or an exact server-name list (an empty array locks the agent out of MCP entirely). Resolution lives in `resolveAgentMcpServers` (`packages/coding-agent/src/config/model-resolver.ts`).
+
+Precedence (highest first): a defined `task.agentMcpServers[name]` entry wins over the agent definition's `mcpServers` frontmatter; an absent settings entry falls back to frontmatter; both absent ⇒ preserve all. Empty `[]` at the settings layer is authoritative — it locks the agent out of MCP rather than falling through to frontmatter (this is the harness-level lockdown case, so a deliberate operator pinning cannot be silently widened by an agent author's frontmatter).
+
+The effective value flows through three identical-identity gates:
+
+1. `createMCPProxyTools(mcpManager, effectiveMcpServers)` in the live spawn — proxy tools whose `mcpServerName` is not in the allowlist never enter the child session.
+2. The debug log emitted when the filter narrows the parent's surface (now records `source: "settings" | "frontmatter"` so an operator can audit which layer actually applied).
+3. `session_init.mcpServers` written before the first assistant turn, and re-applied by `MCPManager`-aware revival in `packages/coding-agent/src/task/persisted-revive.ts` — cold revival restores the exact effective filter, settings or frontmatter alike.
+
+Use the settings record when a harness or operator needs to assign a central MCP subset to a specific agent without editing the agent's bundled prompt; use frontmatter when the agent author owns the boundary.
+
+### Process-scoped MCP server allowlist (env)
+
+`OMP_MCP_SERVER_ALLOWLIST` is the env-driven counterpart to the agent-frontmatter `mcpServers` field, intended for top-level OMP workers launched by an external orchestrator (Paseo) that needs a process-scoped capability boundary without forking the auth/profile config. The variable is read by `MCPManager.discoverAndConnect` (`packages/coding-agent/src/mcp/manager.ts`) and passed through to `loadAllMCPConfigs` as `mcpServerAllowlist`; the loader applies `filterMCPServersByAllowlist` *after* the existing Exa / Browser filters and *before* `connectServers`, so excluded servers never start and never contribute tools.
+
+Contract (parsed by `parseMCPServerAllowlist` in `packages/coding-agent/src/mcp/config.ts`):
+
+| Value | Behavior |
+| --- | --- |
+| unset / empty / whitespace | no narrowing — every loaded server starts (today's behavior) |
+| `*` (or any whitespace) | no narrowing — explicit wildcard equivalent to unset |
+| `none` (case-insensitive) | zero MCP servers start; documented sentinel for "no MCP at all" |
+| CSV of server names | exact-name membership set; deduped and trimmed; non-empty after parsing |
+
+Filter identity is exact-string match on the `MCPServerConfig` key — identical to the executor's `createMCPProxyTools(mcpManager, allowedMCPServers)` and the agent-frontmatter parser. The env value can be overridden per-call through `MCPDiscoverOptions.mcpServerAllowlist`, which is what tests and embedded entrypoints use to pin behavior; the env is the default for top-level Paseo-launched workers.
+
+This filter is **capability/startup** filtering: excluded servers never reach the connect step, so they cannot consume auth, sockets, or processes. It is intentionally distinct from the `tools.xdev` setting (`packages/coding-agent/src/config/settings-schema.ts`), which is **schema-on-demand** filtering — `tools.xdev` keeps every enabled tool available and just mounts rarely-used ones under `xd://` device URLs accessed through `read`/`write`, instead of shipping their schemas on every request. Use `OMP_MCP_SERVER_ALLOWLIST` when an entire MCP server must not be reachable in this process; use `tools.xdev` when reachable tools should not pollute the model's per-turn schema.
+
 ## Refresh/reload paths (startup vs live reload)
 
 ### Initial startup path

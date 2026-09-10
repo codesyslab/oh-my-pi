@@ -257,6 +257,15 @@ export interface SessionInitEntry extends SessionEntryBase {
 	readSummarize?: boolean;
 	/** Effective advisor for this subagent: `"on"` = advisor-role model, else an explicit model pattern; absent = unadvised. */
 	advisor?: string;
+	/**
+	 * MCP server allowlist the subagent ran with, by exact `mcpServerName`.
+	 * - absent / `undefined` / `"*"` ⇒ preserved parent's full inherited MCP surface (today's behavior).
+	 * - `[]` ⇒ no inherited MCP proxy tools.
+	 * - non-empty list ⇒ only tools whose MCP server identity is in this list.
+	 * Persisted so cold revival restores the same allowlist rather than
+	 * re-discovering every proxy the parent has loaded.
+	 */
+	mcpServers?: string[] | "*";
 }
 
 /** Mode change entry - tracks agent mode transitions (e.g. plan mode). */

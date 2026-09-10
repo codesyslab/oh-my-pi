@@ -209,4 +209,71 @@ describe("parseAgentFields", () => {
 		expect(parseAgentFields({ name: "worker", description: "desc", advisor: "  " })?.advisor).toBeUndefined();
 		expect(parseAgentFields({ name: "worker", description: "desc" })?.advisor).toBeUndefined();
 	});
+
+	describe("mcpServers allowlist", () => {
+		test("omitted mcpServers preserves parent's full MCP surface", () => {
+			expect(parseAgentFields({ name: "worker", description: "desc" })?.mcpServers).toBeUndefined();
+		});
+
+		test("'*' string preserves parent's full MCP surface", () => {
+			expect(parseAgentFields({ name: "worker", description: "desc", mcpServers: "*" })?.mcpServers).toBe("*");
+		});
+
+		test("parses mcpServers from array frontmatter", () => {
+			expect(
+				parseAgentFields({ name: "worker", description: "desc", mcpServers: ["exa", "github"] })?.mcpServers,
+			).toEqual(["exa", "github"]);
+		});
+
+		test("parses mcpServers from CSV string frontmatter", () => {
+			expect(
+				parseAgentFields({ name: "worker", description: "desc", mcpServers: "exa, github , exa" })?.mcpServers,
+			).toEqual(["exa", "github"]);
+		});
+
+		test("preserves explicit empty array distinct from omitted", () => {
+			// An empty array means "no MCP proxy tools"; omitting means
+			// "preserve parent's full MCP surface". The two must round-trip
+			// distinctly so a deliberate lockdown is not silently widened
+			// on save/reload.
+			expect(parseAgentFields({ name: "quiet", description: "desc", mcpServers: [] })?.mcpServers).toEqual([]);
+			expect(parseAgentFields({ name: "quiet", description: "desc" })?.mcpServers).toBeUndefined();
+		});
+
+		test("treats empty CSV string as explicit empty array", () => {
+			expect(parseAgentFields({ name: "quiet", description: "desc", mcpServers: "   " })?.mcpServers).toEqual([]);
+			expect(parseAgentFields({ name: "quiet", description: "desc", mcpServers: "" })?.mcpServers).toEqual([]);
+		});
+
+		test("ignores non-string entries in array form", () => {
+			// Booleans/numbers slip in through manual frontmatter edits; the
+			// filter only trusts exact server-name strings.
+			expect(
+				parseAgentFields({
+					name: "worker",
+					description: "desc",
+					mcpServers: ["exa", 42, true, "github", ""] as unknown as string[],
+				})?.mcpServers,
+			).toEqual(["exa", "github"]);
+		});
+
+		test("ignores unrecognized scalar mcpServers values", () => {
+			// Anything that is not "*", an array, or a CSV string is dropped;
+			// the agent falls back to the parent's full MCP surface rather
+			// than having a malformed allowlist silently mean "no MCP".
+			expect(parseAgentFields({ name: "worker", description: "desc", mcpServers: 42 })?.mcpServers).toBeUndefined();
+			expect(
+				parseAgentFields({ name: "worker", description: "desc", mcpServers: true })?.mcpServers,
+			).toBeUndefined();
+			expect(
+				parseAgentFields({ name: "worker", description: "desc", mcpServers: { exa: true } })?.mcpServers,
+			).toBeUndefined();
+		});
+
+		test("deduplicates repeated entries", () => {
+			expect(
+				parseAgentFields({ name: "worker", description: "desc", mcpServers: ["exa", "exa", "github"] })?.mcpServers,
+			).toEqual(["exa", "github"]);
+		});
+	});
 });

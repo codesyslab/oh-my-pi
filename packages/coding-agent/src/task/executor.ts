@@ -18,6 +18,7 @@ import {
 	formatModelSelectorValue,
 	formatModelStringWithRouting,
 	resolveAgentAdvisorSelection,
+	resolveAgentMcpServers,
 	resolveAgentPrewalkPattern,
 	resolveConfiguredModelPatterns,
 	resolveExplicitModelRole,
@@ -37,6 +38,7 @@ import { buildSkillPromptMessage, type Skill } from "../extensibility/skills";
 import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
 import { IrcBus } from "../irc/bus";
+import { filterMCPToolsByAllowlist } from "../mcp/config";
 import type { MCPManager } from "../mcp/manager";
 import type { MnemopiSessionState } from "../mnemopi/state";
 import { initializeExtensions } from "../modes/runtime-init";
@@ -881,9 +883,25 @@ function getUsageTokens(usage: unknown): number {
  * display name), so a reconnect that swaps the instance in `getTools()` is
  * always honored. The proxy adds only the Task-specific 60s call timeout,
  * combining its abort signal with the caller's around source execution.
+ *
+ * `allowedMCPServers` narrows the proxy surface for subagent roles that should
+ * only see a subset of the parent's MCP tool set:
+ * - `undefined` (default) or `"*"` → no narrowing; every tool the parent has is mirrored.
+ * - `[]` → no proxy tools (the agent has been granted zero MCP capabilities).
+ * - non-empty array → only tools whose raw `mcpServerName` matches an entry
+ *   pass through. Filtering is by exact server identity, not by lossy name
+ *   prefix, and nameless tools (no `mcpServerName`) are dropped whenever an
+ *   allowlist is present so the boundary cannot be widened through reconnects
+ *   that mint new tools under existing names.
  */
-export function createMCPProxyTools(mcpManager: MCPManager): CustomTool[] {
-	return mcpManager.getTools().map(tool => {
+export function createMCPProxyTools(mcpManager: MCPManager, allowedMCPServers?: string[] | "*"): CustomTool[] {
+	// Shared identity check: the same membership semantics that the SDK
+	// callbacks and the loader's server-config filter apply, so a tool that
+	// would be dropped by `filterMCPServersByAllowlist` is also dropped here
+	// (no lossy prefix matching, and nameless tools drop whenever an
+	// allowlist is present so reconnects cannot smuggle them through).
+	const filteredTools = filterMCPToolsByAllowlist(mcpManager.getTools(), allowedMCPServers);
+	return filteredTools.map(tool => {
 		const serverName = tool.mcpServerName ?? "";
 		const mcpToolName = tool.mcpToolName ?? "";
 		return {
@@ -3278,7 +3296,30 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 			const restrictToolNames = options.restrictToolNames === true;
 			const enableMCP = !restrictToolNames && (options.enableMCP ?? true);
 			const mcpManager = enableMCP ? options.mcpManager : undefined;
-			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager) : [];
+			// Effective MCP allowlist = `task.agentMcpServers[name]` settings
+			// override > agent frontmatter `mcpServers` > undefined
+			// (preserve parent's full MCP surface). The settings value is the
+			// harness-level mechanism for assigning a central MCP subset to a
+			// specific agent without editing the agent's bundled prompt;
+			// frontmatter is the per-agent author-level declaration.
+			const effectiveMcpServers = resolveAgentMcpServers({
+				settingsOverride: settings.get("task.agentMcpServers")[agent.name],
+				agentMcpServers: agent.mcpServers,
+			});
+			// Narrow the inherited MCP proxy surface to the effective
+			// allowlist (omitted / "*" preserves today's all-parent behavior;
+			// explicit [] drops every inherited proxy tool). The filter is
+			// exact-server-id so a reconnect that renames a tool under an
+			// excluded server cannot re-introduce it.
+			const mcpProxyTools = mcpManager ? createMCPProxyTools(mcpManager, effectiveMcpServers) : [];
+			if (mcpManager && effectiveMcpServers !== undefined && effectiveMcpServers !== "*") {
+				logger.debug("Subagent MCP server allowlist applied", {
+					agent: agent.name,
+					allowed: effectiveMcpServers,
+					proxyCount: mcpProxyTools.length,
+					source: settings.get("task.agentMcpServers")[agent.name] !== undefined ? "settings" : "frontmatter",
+				});
+			}
 			const sessionCustomTools = [...mcpProxyTools, ...(options.customTools ?? [])];
 
 			// Derive subagent-scoped telemetry from the parent's config so the
@@ -3402,6 +3443,13 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				skipPythonPreflight,
 				enableMCP,
 				mcpManager,
+				// Forward the effective MCP allowlist (settings > frontmatter,
+				// resolved above) so the SDK callbacks that read directly from
+				// `mcpManager.getTools()` / `mcpManager.getServerInstructions()`
+				// — the live browser-toggle reconcile and the system-prompt
+				// instruction injection — apply the same exact-identity filter
+				// rather than re-leaking the parent's full MCP surface.
+				allowedMCPServers: effectiveMcpServers,
 				customTools: sessionCustomTools.length > 0 ? sessionCustomTools : undefined,
 				localProtocolOptions: options.localProtocolOptions,
 				telemetry: subagentTelemetry,
@@ -3531,6 +3579,12 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				outputSchema,
 				outputSchemaMode: options.outputSchemaMode,
 				restrictToolNames: restrictToolNames || undefined,
+				// Persist the *effective* MCP allowlist (settings > frontmatter)
+				// so cold revival restores the exact filter the live run used,
+				// even when the override came from `task.agentMcpServers` rather
+				// than the agent definition's own frontmatter. Undefined when
+				// both sources are unset, matching today's "preserve all" shape.
+				mcpServers: effectiveMcpServers,
 			});
 
 			abortSignal.addEventListener(

@@ -22,6 +22,17 @@ export interface LoadMCPConfigsOptions {
 	filterBrowser?: boolean;
 	/** Session-local extension roots for post-startup rediscovery (explicit + mode + configured). */
 	extensionRoots?: EffectiveExtensionRoots;
+	/**
+	 * Process-scoped exact-server allowlist applied after Exa/Browser filtering.
+	 * - `undefined` ⇒ no narrowing; every loaded server passes through.
+	 * - `[]` ⇒ drop every loaded server (zero MCP connections start).
+	 * - non-empty list ⇒ only servers whose exact name is in the list pass through.
+	 *
+	 * Filtering is applied BEFORE connect/tool discovery so excluded servers
+	 * do not start, matching the role-allowlist semantics from agent
+	 * frontmatter `mcpServers` (exact MCP server identity, not name prefix).
+	 */
+	mcpServerAllowlist?: string[];
 }
 
 /** Result of loading MCP configs */
@@ -156,6 +167,16 @@ export async function loadAllMCPConfigs(cwd: string, options?: LoadMCPConfigsOpt
 		const browserResult = filterBrowserMCPServers(configs, sources);
 		configs = browserResult.configs;
 		sources = browserResult.sources;
+	}
+
+	// Process-scoped exact-server allowlist (env-driven). Applied last so
+	// Exa / Browser filters above have already done their job; the allowlist
+	// then narrows the surviving set by exact `mcpServer` name. Excluded
+	// servers never reach connectServers() so they never start.
+	if (options?.mcpServerAllowlist !== undefined) {
+		const allowlistResult = filterMCPServersByAllowlist(configs, sources, options.mcpServerAllowlist);
+		configs = allowlistResult.configs;
+		sources = allowlistResult.sources;
 	}
 
 	return { configs, exaApiKeys, sources };
@@ -442,4 +463,136 @@ export function filterBrowserMCPServers(
 	}
 
 	return { configs: filtered, sources: filteredSources };
+}
+
+/** Sentinel value for `OMP_MCP_SERVER_ALLOWLIST=none` — drop every MCP server. */
+export const MCP_SERVER_ALLOWLIST_NONE_SENTINEL = "none";
+
+/**
+ * Parse the raw `OMP_MCP_SERVER_ALLOWLIST` env value into a structured allowlist.
+ *
+ * Contract:
+ * - `undefined` / empty / whitespace ⇒ `undefined` (no narrowing; preserve all)
+ * - `"*"` ⇒ `undefined` (no narrowing; explicit wildcard equivalent to unset)
+ * - `"none"` (case-insensitive) ⇒ `[]` (explicit sentinel: zero servers)
+ * - CSV ⇒ trimmed, non-empty strings (exact-name membership set)
+ *
+ * The contract deliberately matches the parser semantics already used for
+ * the agent-frontmatter `mcpServers` field so a Paseo-launched top-level
+ * worker and a task agent's `mcpServers` list agree on what an empty value,
+ * a wildcard, and an explicit list mean.
+ */
+export function parseMCPServerAllowlist(value: string | undefined): string[] | undefined {
+	if (value === undefined) return undefined;
+	const trimmed = value.trim();
+	if (trimmed === "" || trimmed === "*") return undefined;
+	if (trimmed.toLowerCase() === MCP_SERVER_ALLOWLIST_NONE_SENTINEL) return [];
+	const parsed = trimmed
+		.split(",")
+		.map(entry => entry.trim())
+		.filter(Boolean);
+	// Dedup so a CSV with repeated names yields a usable membership set.
+	return Array.from(new Set(parsed));
+}
+
+/** Result of filtering MCP configs by an exact-server allowlist. */
+export interface MCPServerAllowlistFilterResult {
+	/** Configs whose exact server name is in the allowlist. */
+	configs: Record<string, MCPServerConfig>;
+	/** Source metadata for the surviving configs. */
+	sources: Record<string, SourceMeta>;
+	/** Names of configs the allowlist dropped, in iteration order. */
+	dropped: string[];
+}
+
+/**
+ * Filter MCP configs to only those whose exact server name is in `allowlist`.
+ *
+ * Membership is exact-string equality on the config key — the same identity
+ * the executor's `createMCPProxyTools(manager, allowedMCPServers)` filter
+ * uses. Tools without a resolvable name (no config entry) are dropped
+ * whenever an allowlist is present, so the boundary cannot be widened
+ * through reloads that mint new servers.
+ *
+ * `allowlist === undefined` is a no-op (returns the input unchanged). An
+ * empty `allowlist` drops every config so zero MCP connections start.
+ */
+export function filterMCPServersByAllowlist(
+	configs: Record<string, MCPServerConfig>,
+	sources: Record<string, SourceMeta>,
+	allowlist: string[] | undefined,
+): MCPServerAllowlistFilterResult {
+	if (allowlist === undefined) {
+		return { configs, sources, dropped: [] };
+	}
+	const allowedSet = new Set(allowlist);
+	const filtered: Record<string, MCPServerConfig> = {};
+	const filteredSources: Record<string, SourceMeta> = {};
+	const dropped: string[] = [];
+
+	for (const [name, config] of Object.entries(configs)) {
+		if (name === "" || !allowedSet.has(name)) {
+			dropped.push(name);
+			continue;
+		}
+		filtered[name] = config;
+		if (sources[name]) {
+			filteredSources[name] = sources[name];
+		}
+	}
+
+	return { configs: filtered, sources: filteredSources, dropped };
+}
+
+/**
+ * Filter MCP tools by exact-server-name allowlist, applying the same
+ * membership semantics as {@link filterMCPServersByAllowlist} and the
+ * executor's `createMCPProxyTools(mcpManager, allowedMCPServers)`.
+ *
+ * - `allowlist === undefined` / `"*"` ⇒ every tool passes through.
+ * - non-empty list ⇒ keep tools whose `mcpServerName` is in the list.
+ * - `[]` ⇒ drop every tool (zero proxy tools reach the consumer).
+ *
+ * Tools without a resolvable `mcpServerName` are dropped whenever an
+ * allowlist is present, so reconnects that mint new tools under an
+ * excluded server (or under no server identity at all) cannot bypass the
+ * boundary. The executor and the SDK callbacks share this helper so the
+ * live spawn, the persisted revival, the browser-toggle reconcile, and
+ * the system-prompt instruction injection all agree on what the boundary
+ * means for a given allowlist value.
+ */
+export function filterMCPToolsByAllowlist<T extends { mcpServerName?: string }>(
+	tools: T[],
+	allowlist: string[] | "*" | undefined,
+): T[] {
+	if (allowlist === undefined || allowlist === "*") return tools;
+	const allowedSet = new Set(allowlist);
+	return tools.filter(
+		tool => typeof tool.mcpServerName === "string" && tool.mcpServerName !== "" && allowedSet.has(tool.mcpServerName),
+	);
+}
+
+/**
+ * Filter a server-instructions map by the same exact-identity allowlist
+ * used by {@link filterMCPToolsByAllowlist} and
+ * {@link filterMCPServersByAllowlist}. Server instructions are server-
+ * controlled and part of the capability surface, so a subagent whose
+ * allowlist excludes a server must not see that server's instructions
+ * in its system prompt either.
+ *
+ * `allowlist === undefined` / `"*"` returns the input unchanged.
+ * `[]` returns an empty map. Non-empty lists keep only entries whose
+ * key is in the list — no name-prefix matching, no nameless fallbacks.
+ */
+export function filterMCPServerInstructionsByAllowed(
+	instructions: Map<string, string>,
+	allowlist: string[] | "*" | undefined,
+): Map<string, string> {
+	if (allowlist === undefined || allowlist === "*") return instructions;
+	const allowedSet = new Set(allowlist);
+	const filtered = new Map<string, string>();
+	for (const [name, text] of instructions) {
+		if (allowedSet.has(name)) filtered.set(name, text);
+	}
+	return filtered;
 }

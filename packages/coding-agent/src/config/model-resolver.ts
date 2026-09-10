@@ -1397,6 +1397,41 @@ export function resolveAgentAdvisorSelection(
 	return agentPattern ? { model: agentPattern } : undefined;
 }
 
+export interface AgentMcpServersResolutionOptions {
+	/**
+	 * `task.agentMcpServers[name]` settings value for this agent: `"*"` (preserve
+	 * parent's full inherited MCP surface — equivalent to omitting the
+	 * override) or an exact server-name list (an empty array drops every
+	 * inherited MCP proxy tool).
+	 */
+	settingsOverride?: string[] | "*";
+	/** Agent definition `mcpServers` frontmatter: `"*"` or exact server-name list. */
+	agentMcpServers?: string[] | "*";
+}
+
+/**
+ * Effective MCP server allowlist for one spawned agent, in the same shape the
+ * task executor's `createMCPProxyTools(mcpManager, allowedMCPServers)` consumes.
+ *
+ * Precedence mirrors `resolveAgentAdvisorSelection` / `resolveAgentPrewalkPattern`:
+ * the harness-level `task.agentMcpServers` settings override decides first
+ * (any defined value wins — `"*"`, a list, or an empty array); an absent
+ * settings entry falls back to the agent definition's `mcpServers`
+ * frontmatter; both absent ⇒ `undefined` (preserve parent's full MCP
+ * surface, today's behavior). The filter is exact MCP server identity, not
+ * a lossy name prefix, matching the agent-frontmatter and env-allowlist
+ * contracts.
+ */
+export function resolveAgentMcpServers(options: AgentMcpServersResolutionOptions): string[] | "*" | undefined {
+	if (options.settingsOverride !== undefined) {
+		// The settings record is typed `string[] | "*"`; treat every defined
+		// value as authoritative so an empty array locks the agent out
+		// rather than silently falling through to frontmatter.
+		return options.settingsOverride;
+	}
+	return options.agentMcpServers;
+}
+
 /**
  * Resolve a model role value into a concrete model and thinking metadata.
  */

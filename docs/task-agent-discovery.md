@@ -27,7 +27,7 @@ It covers runtime behavior as implemented today, including precedence, invalid-d
 Task agents normalize into `AgentDefinition` (`src/task/types.ts`):
 
 - required `name`, `description`, and `systemPrompt`
-- optional `tools`, `spawns`, prioritized `model` list, `thinkingLevel`, `output`, `blocking`, `autoloadSkills`, `readSummarize`, `prewalk`, `advisor`
+- optional `tools`, `spawns`, prioritized `model` list, `thinkingLevel`, `output`, `blocking`, `autoloadSkills`, `readSummarize`, `prewalk`, `advisor`, `mcpServers`
 - `source`: `"bundled" | "user" | "project"` (extension agents are tagged with their extension root's project/user level)
 - optional `filePath`
 
@@ -37,6 +37,12 @@ Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.
 - `tools` accepts CSV or array; if provided, `yield` is auto-added
 - `spawns` accepts `*`, CSV, or array
 - backward-compat behavior: if `spawns` missing but `tools` includes `task`, `spawns` becomes `*`
+- `mcpServers` narrows the inherited parent MCP tool surface:
+  - omitted or `"*"` (or any unset value) => preserve the parent's full MCP tool surface (today's behavior)
+  - explicit `[]` => expose zero inherited MCP proxy tools (the agent runs MCP-disabled)
+  - non-empty list => only proxy tools whose raw `mcpServerName` matches an entry are exposed. Filtering is by exact MCP server identity, not by lossy name prefix; tools without resolvable server identity are dropped whenever an allowlist is present, so reconnects that mint new tools under existing names cannot re-introduce excluded servers.
+  - Persisted on `session_init` and re-applied on cold revival so a parked subagent cannot regain excluded tools via inherited manager discovery or `alwaysInclude` paths.
+- `task.agentMcpServers` settings record (agent name → `"*"` or exact server list, including `[]`) is the harness-level override of the inherited MCP allowlist; declared in `packages/coding-agent/src/config/settings-schema.ts` and resolved by `resolveAgentMcpServers` in `packages/coding-agent/src/config/model-resolver.ts`. Precedence mirrors `task.agentPrewalk` / `task.agentAdvisor`: a defined settings entry wins over the agent's own `mcpServers` frontmatter (so the harness can assign a central MCP subset to an agent without editing its bundled prompt); an absent entry falls back to frontmatter; both absent ⇒ preserve all. Empty `[]` at the settings layer is authoritative — it locks the agent out of MCP rather than falling through to frontmatter. The effective value is persisted on `session_init.mcpServers` so cold revival restores the same allowlist.
 - `output` is passed through as opaque schema data
 - `read-summarize: false` (normalized to `readSummarize`) forces the subagent's `read` tool to return verbatim file content instead of structural summaries — `runSubprocess` applies it as a `read.summarize.enabled: false` override on the subagent's isolated settings (`src/task/executor.ts`). `scout` ships with it disabled. Defaults to enabled when the field is absent.
 - `model` accepts one selector, CSV, or an array. Entries are tried in order after role aliases are expanded.
