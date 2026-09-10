@@ -23,6 +23,8 @@ const RUNTIME_ONLY_PROVIDERS = new Set([
 	// `QODER_CN_SEED_SPECS` array read by `qoderCnModelManagerOptions`'s
 	// `staticModels`, not a models.json row, so the bundle stays empty.
 	"qoder-cn",
+	// Public Provider API discovery via commandCodeModelManagerOptions.
+	"commandcode",
 ]);
 
 function collectReferencedProviders(): Map<string, string> {
