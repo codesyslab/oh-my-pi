@@ -15,7 +15,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
-import { listResourceTemplates } from "../src/mcp/client";
+import { listResources, listResourceTemplates } from "../src/mcp/client";
 import { MCPManager } from "../src/mcp/manager";
 import type { MCPServerConnection, MCPStdioServerConfig, MCPTransport } from "../src/mcp/types";
 import { RESOURCE_URIS } from "./fixtures/resources-no-templates-mcp";
@@ -42,6 +42,33 @@ function makeResourceConnection(transport: MCPTransport): MCPServerConnection {
 		capabilities: { resources: {} },
 	};
 }
+
+describe("listResources -32601 handling", () => {
+	it("returns [] when an advertised resources/list method is missing", async () => {
+		const connection = makeResourceConnection(
+			mockTransport(async method => {
+				if (method === "resources/list") {
+					throw new Error("MCP error -32601: Method not found");
+				}
+				return { resources: [] };
+			}),
+		);
+
+		await expect(listResources(connection)).resolves.toEqual([]);
+		expect(connection.resources).toEqual([]);
+	});
+
+	it("rethrows non-method-not-found errors", async () => {
+		const connection = makeResourceConnection(
+			mockTransport(async () => {
+				throw new Error("MCP error -32603: Internal error");
+			}),
+		);
+
+		await expect(listResources(connection)).rejects.toThrow("-32603");
+		expect(connection.resources).toBeUndefined();
+	});
+});
 
 describe("listResourceTemplates -32601 handling", () => {
 	it("returns [] when the server answers resources/templates/list with -32601", async () => {

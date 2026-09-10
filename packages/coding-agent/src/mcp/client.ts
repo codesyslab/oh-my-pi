@@ -302,16 +302,27 @@ export async function listResources(
 	const allResources: MCPResource[] = [];
 	let cursor: string | undefined;
 
-	do {
-		const params: Record<string, unknown> = {};
-		if (cursor) {
-			params.cursor = cursor;
-		}
+	try {
+		do {
+			const params: Record<string, unknown> = {};
+			if (cursor) {
+				params.cursor = cursor;
+			}
 
-		const result = await connection.transport.request<MCPResourcesListResult>("resources/list", params, options);
-		allResources.push(...result.resources);
-		cursor = result.nextCursor;
-	} while (cursor);
+			const result = await connection.transport.request<MCPResourcesListResult>("resources/list", params, options);
+			allResources.push(...result.resources);
+			cursor = result.nextCursor;
+		} while (cursor);
+	} catch (error) {
+		// Some tool-only servers advertise an empty resources capability but do
+		// not implement resources/list. Cache that as an empty catalog so the
+		// optional surface neither retries nor creates startup failure noise.
+		if (isMethodNotFoundError(error)) {
+			connection.resources = [];
+			return [];
+		}
+		throw error;
+	}
 
 	connection.resources = allResources;
 	return allResources;
